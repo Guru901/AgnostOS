@@ -1,4 +1,4 @@
-use core::sync::atomic::AtomicUsize;
+use core::sync::atomic::{AtomicBool, AtomicUsize};
 
 use noto_sans_mono_bitmap::{FontWeight, RasterHeight};
 
@@ -9,3 +9,5 @@ pub(crate) const FONT_HEIGHT: RasterHeight = RasterHeight::Size16;
 
 pub static HEAP_START: AtomicUsize = AtomicUsize::new(0);
 pub static HEAP_SIZE: AtomicUsize = AtomicUsize::new(0);
+
+pub static BOOT_SERVICES_EXITED: AtomicBool = AtomicBool::new(false);

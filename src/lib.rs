@@ -1,3 +1,6 @@
+#![no_std]
+extern crate alloc;
+
 /// Module that contains the code for our custom allocator.
 pub mod allocator;
 

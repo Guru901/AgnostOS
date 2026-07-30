@@ -12,6 +12,8 @@
 //! - Block cursor rendering
 //! - Backspace with visual erase
 
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 use core::fmt;
 use noto_sans_mono_bitmap::{RasterHeight, get_raster_width};
 use spin::Mutex;

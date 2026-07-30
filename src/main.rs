@@ -6,13 +6,14 @@ use core::time::Duration;
 extern crate alloc;
 
 use agnostos::{
-    allocator::AgnostosAllocator, console, graphics::Framebuffer, shell, uefi_graphics,
+    BOOT_SERVICES_EXITED, allocator::AgnostosAllocator, console, graphics::Framebuffer, kprintln,
+    shell, uefi_graphics,
 };
 
 use uefi::prelude::*;
 
 #[global_allocator]
-static ALLOCATOR: AgnostosAllocator = AgnostosAllocator::new();
+pub static ALLOCATOR: AgnostosAllocator = AgnostosAllocator::new();
 
 #[entry]
 fn main() -> Status {
@@ -28,4 +29,36 @@ fn main() -> Status {
 
     ALLOCATOR.init();
     shell::init(&fb)
+}
+
+#[panic_handler]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    if BOOT_SERVICES_EXITED.load(core::sync::atomic::Ordering::Relaxed) {
+        kprintln!("========================================");
+        kprintln!("              KERNEL PANIC");
+        kprintln!("========================================");
+        kprintln!();
+
+        if let Some(location) = info.location() {
+            kprintln!(
+                "Location : {}:{}:{}",
+                location.file(),
+                location.line(),
+                location.column()
+            );
+        }
+
+        kprintln!("Message  : {}", info.message());
+        kprintln!();
+        kprintln!("System halted.");
+    } else {
+        uefi::println!("========================================");
+        uefi::println!("              KERNEL PANIC");
+        uefi::println!("========================================");
+        uefi::println!("{info}");
+    }
+
+    loop {
+        core::hint::spin_loop();
+    }
 }

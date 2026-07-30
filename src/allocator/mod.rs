@@ -5,6 +5,8 @@ use uefi::boot;
 use uefi::boot::MemoryType;
 use uefi::mem::memory_map::MemoryMap;
 
+use crate::BOOT_SERVICES_EXITED;
+use crate::kprintln;
 use crate::{HEAP_SIZE, HEAP_START};
 
 /// A free memory chunk header stored at the start of each free region.
@@ -67,8 +69,13 @@ impl AgnostosAllocator {
     /// (GOP framebuffer pointer must already be saved before calling this).
     /// After this call, all UEFI boot services are unavailable.
     pub fn init(&self) {
+        if HEAP_SIZE.load(Ordering::Relaxed) > 0 {
+            panic!("Allocator already initialised")
+        }
+
         // Exit boot services — after this point, no UEFI boot service calls are valid.
         let memory_map = unsafe { boot::exit_boot_services(Some(MemoryType::LOADER_DATA)) };
+        BOOT_SERVICES_EXITED.store(true, Ordering::Release);
 
         // Find the largest contiguous conventional (free) memory region.
         let mut heap_start = 0usize;
@@ -81,6 +88,18 @@ impl AgnostosAllocator {
                     heap_size = size;
                 }
             }
+        }
+
+        if heap_size == 0 {
+            panic!("Failed to initialise heap");
+        }
+
+        if heap_size < core::mem::size_of::<FreeChunk>() {
+            panic!("Heap is too small");
+        }
+
+        if heap_start % core::mem::size_of::<FreeChunk>() != 0 {
+            panic!("Heap is misaligned");
         }
 
         // Store heap info globally so commands like `meminfo` can read them.

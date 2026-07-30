@@ -4,8 +4,9 @@
 //! them to the appropriate console or command handler. Commands are parsed
 //! into a name, optional flags (prefixed with `-`), and positional arguments.
 
+use alloc::string::String;
+use alloc::vec::Vec;
 use core::sync::atomic::Ordering;
-
 use noto_sans_mono_bitmap::RasterHeight;
 
 use crate::{
