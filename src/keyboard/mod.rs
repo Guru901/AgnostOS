@@ -6,6 +6,8 @@ use spin::Mutex;
 
 unsafe fn inb(port: u16) -> u8 {
     let val: u8;
+    // SAFETY: callers use the legacy PS/2 controller ports (0x64 and 0x60),
+    // which are available while the kernel is running on the target hardware.
     unsafe {
         asm!("in al, dx", out("al") val, in("dx") port);
     }
@@ -32,6 +34,8 @@ pub enum KeyboardEvent {
 }
 
 pub fn poll() -> Option<KeyboardEvent> {
+    // SAFETY: `inb` only accesses the PS/2 status and data ports; reading the
+    // status port first ensures a data-port read is performed only when data is ready.
     unsafe {
         let status = inb(0x64);
         if status & 1 == 0 {

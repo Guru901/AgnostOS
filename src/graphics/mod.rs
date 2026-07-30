@@ -38,7 +38,11 @@ impl Framebuffer {
         } else {
             [color.r, color.g, color.b]
         };
+        // SAFETY: callers calculate `pixel_index` from coordinates within the
+        // framebuffer dimensions; the GOP framebuffer has four bytes per pixel.
         let p = unsafe { self.ptr.add(4 * pixel_index) };
+        // SAFETY: `p` points to the four-byte pixel selected above, so its first
+        // three bytes can be written with the selected channel ordering.
         unsafe {
             p.write(rgb[0]);
             p.add(1).write(rgb[1]);
@@ -60,6 +64,7 @@ pub fn clear_background(fb: &Framebuffer, color: Color) {
     for row in 0..fb.height {
         for col in 0..fb.width {
             let pixel_index = row * fb.stride + col;
+            // SAFETY: `row` and `col` are bounded by the framebuffer dimensions.
             unsafe { fb.write_pixel(pixel_index, &color) };
         }
     }
@@ -84,6 +89,7 @@ pub fn draw_rec(fb: &Framebuffer, (x, y): (usize, usize), (w, h): (usize, usize)
     for row in y..y2 {
         for col in x..x2 {
             let pixel_index = row * fb.stride + col;
+            // SAFETY: the coordinate assertions above keep this pixel in bounds.
             unsafe { fb.write_pixel(pixel_index, &color) };
         }
     }
@@ -112,6 +118,7 @@ pub fn draw_circle(fb: &Framebuffer, radius: usize, (cx, cy): (usize, usize), co
 
                 if px >= 0 && py >= 0 && px < fb.width as isize && py < fb.height as isize {
                     let pixel_index = py as usize * fb.stride + px as usize;
+                    // SAFETY: the preceding bounds check keeps `(px, py)` in the framebuffer.
                     unsafe {
                         fb.write_pixel(pixel_index, &color);
                     }
@@ -142,6 +149,7 @@ pub fn draw_line(fb: &Framebuffer, (x1, y1): (i64, i64), (x2, y2): (i64, i64), c
     loop {
         if x >= 0 && y >= 0 && x < fb.width as i64 && y < fb.height as i64 {
             let pixel_index = y as usize * fb.stride + x as usize;
+            // SAFETY: the bounds check above keeps `(x, y)` in the framebuffer.
             unsafe {
                 fb.write_pixel(pixel_index, &color);
             }
@@ -172,6 +180,8 @@ pub fn scroll_up(fb: &Framebuffer, rows: usize) {
         for col in 0..fb.width {
             let src = (row * fb.stride + col) * bpp;
             let dst = ((row - rows) * fb.stride + col) * bpp;
+            // SAFETY: source and destination offsets are derived from valid rows
+            // and columns, and each pixel occupies `bpp` bytes in the framebuffer.
             unsafe {
                 for b in 0..bpp {
                     let val = fb.ptr.add(src + b).read();
@@ -184,6 +194,7 @@ pub fn scroll_up(fb: &Framebuffer, rows: usize) {
     for row in (fb.height - rows)..fb.height {
         for col in 0..fb.width {
             let idx = (row * fb.stride + col) * bpp;
+            // SAFETY: these offsets address the valid bottom rows being cleared.
             unsafe {
                 fb.ptr.add(idx).write(0);
                 fb.ptr.add(idx + 1).write(0);
@@ -251,6 +262,7 @@ fn draw_glyph(fb: &Framebuffer, raster: &RasterizedChar, x: usize, y: usize, col
             let b = (color.b as u32 * intensity as u32 / 255) as u8;
 
             let pixel_index = py * fb.stride + px;
+            // SAFETY: out-of-bounds glyph pixels are skipped immediately above.
             unsafe { fb.write_pixel(pixel_index, &Color::new(r, g, b)) };
         }
     }

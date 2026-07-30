@@ -73,6 +73,8 @@ impl AgnostosAllocator {
         }
 
         // Exit boot services — after this point, no UEFI boot service calls are valid.
+        // SAFETY: initialization is one-shot and the caller has finished using
+        // UEFI services, satisfying `exit_boot_services`' transition requirements.
         let memory_map = unsafe { boot::exit_boot_services(Some(MemoryType::LOADER_DATA)) };
         BOOT_SERVICES_EXITED.store(true, Ordering::Release);
 
@@ -107,6 +109,8 @@ impl AgnostosAllocator {
 
         // Write the initial FreeChunk header at the start of the heap region,
         // covering the entire heap as one large free chunk.
+        // SAFETY: the selected conventional-memory range is nonempty, large enough
+        // for `FreeChunk`, and aligned as checked above; it is now owned by the heap.
         unsafe {
             let chunk = heap_start as *mut FreeChunk;
             (*chunk).size = heap_size;
@@ -124,6 +128,8 @@ unsafe impl GlobalAlloc for AgnostosAllocator {
     /// enough to hold another [`FreeChunk`] header; otherwise removes the
     /// chunk entirely. Returns null if no suitable chunk is found (OOM).
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        // SAFETY: the free list is initialized from the owned heap region, and the
+        // mutex gives this allocator exclusive access while links and headers change.
         unsafe {
             // Ensure size and alignment are at least as large as FreeChunk
             // itself, so dealloc can always write a valid header back.
@@ -178,6 +184,8 @@ unsafe impl GlobalAlloc for AgnostosAllocator {
     /// Note: adjacent free chunks are **not** coalesced — fragmentation
     /// will accumulate over time with many small allocations/deallocations.
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        // SAFETY: `GlobalAlloc` requires `ptr` to be a live allocation from this
+        // allocator with `layout`; the mutex gives exclusive access to the free list.
         unsafe {
             let size = layout.size().max(core::mem::size_of::<FreeChunk>());
             let mut head = self.head.lock();

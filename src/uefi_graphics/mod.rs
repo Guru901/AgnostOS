@@ -7,6 +7,9 @@ pub fn init_gop() -> ScopedProtocol<GraphicsOutput> {
     let gop_handle = boot::get_handle_for_protocol::<GraphicsOutput>()
         .expect("missing graphics output protocol");
 
+    // SAFETY: `gop_handle` was obtained for `GraphicsOutput`, and this image is
+    // the active UEFI agent. `GetProtocol` only borrows the protocol while the
+    // returned `ScopedProtocol` keeps that borrow alive.
     let mut gop = unsafe {
         boot::open_protocol::<GraphicsOutput>(
             OpenProtocolParams {
