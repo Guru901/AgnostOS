@@ -6,7 +6,6 @@ use uefi::boot::MemoryType;
 use uefi::mem::memory_map::MemoryMap;
 
 use crate::BOOT_SERVICES_EXITED;
-use crate::kprintln;
 use crate::{HEAP_SIZE, HEAP_START};
 
 /// A free memory chunk header stored at the start of each free region.

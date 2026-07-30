@@ -109,9 +109,12 @@ pub fn draw_circle(fb: &Framebuffer, radius: usize, (cx, cy): (usize, usize), co
             if dx * dx + dy * dy <= r_sq {
                 let px = cx + dx;
                 let py = cy + dy;
-                if px >= 0 && py >= 0 {
-                    let pixel_index = (py as usize) * fb.stride + (px as usize);
-                    unsafe { fb.write_pixel(pixel_index, &color) };
+
+                if px >= 0 && py >= 0 && px < fb.width as isize && py < fb.height as isize {
+                    let pixel_index = py as usize * fb.stride + px as usize;
+                    unsafe {
+                        fb.write_pixel(pixel_index, &color);
+                    }
                 }
             }
         }
@@ -135,17 +138,26 @@ pub fn draw_line(fb: &Framebuffer, (x1, y1): (i64, i64), (x2, y2): (i64, i64), c
     let mut err = dx - dy;
 
     let (mut x, mut y) = (x1, y1);
+
     loop {
-        let pixel_index = (y as usize) * fb.stride + (x as usize);
-        unsafe { fb.write_pixel(pixel_index, &color) };
+        if x >= 0 && y >= 0 && x < fb.width as i64 && y < fb.height as i64 {
+            let pixel_index = y as usize * fb.stride + x as usize;
+            unsafe {
+                fb.write_pixel(pixel_index, &color);
+            }
+        }
+
         if x == x2 && y == y2 {
             break;
         }
+
         let e2 = 2 * err;
+
         if e2 > -dy {
             err -= dy;
             x += sx;
         }
+
         if e2 < dx {
             err += dx;
             y += sy;
