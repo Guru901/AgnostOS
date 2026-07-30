@@ -3,6 +3,14 @@ use uefi::{
     proto::console::gop::GraphicsOutput,
 };
 
+/// Initializes the UEFI Graphics Output Protocol using the largest available
+/// display mode up to 1920×1080.
+///
+/// # Panics
+///
+/// Panics if the Graphics Output Protocol is unavailable or cannot be opened,
+/// no compatible graphics mode is available, or the selected mode cannot be
+/// activated.
 #[must_use]
 pub fn init_gop() -> ScopedProtocol<GraphicsOutput> {
     let gop_handle = boot::get_handle_for_protocol::<GraphicsOutput>()

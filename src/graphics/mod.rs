@@ -77,12 +77,12 @@ pub fn clear_background(fb: &Framebuffer, color: &Color) {
 ///
 /// ```rust
 /// use agnostos::Color;
+///
 /// agnostos::graphics::draw_rec(&fb, (100, 100), (100, 100), Color { r: 0, g: 0, b: 0 });
 /// ```
 pub fn draw_rec(fb: &Framebuffer, (x, y): (usize, usize), (w, h): (usize, usize), color: Color) {
     let x2 = x + w;
     let y2 = y + h;
-
     assert!(x2 <= fb.width, "Bad X coordinate");
     assert!(y2 <= fb.height, "Bad Y coordinate");
 
@@ -257,13 +257,13 @@ fn draw_glyph(fb: &Framebuffer, raster: &RasterizedChar, x: usize, y: usize, col
             }
 
             // blend intensity with color
-            let red = (u32::from(color.r) * u32::from(intensity) / 255) as u8;
-            let green = (u32::from(color.g) * u32::from(intensity) / 255) as u8;
-            let blue = (u32::from(color.b) * u32::from(intensity) / 255) as u8;
+            let r = (color.r as u32 * intensity as u32 / 255) as u8;
+            let g = (color.g as u32 * intensity as u32 / 255) as u8;
+            let b = (color.b as u32 * intensity as u32 / 255) as u8;
 
             let pixel_index = py * fb.stride + px;
             // SAFETY: out-of-bounds glyph pixels are skipped immediately above.
-            unsafe { fb.write_pixel(pixel_index, &Color::new(red, green, blue)) };
+            unsafe { fb.write_pixel(pixel_index, &Color::new(r, g, b)) };
         }
     }
 }
