@@ -38,6 +38,12 @@ pub struct AgnostosAllocator {
 unsafe impl Send for AgnostosAllocator {}
 unsafe impl Sync for AgnostosAllocator {}
 
+impl Default for AgnostosAllocator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AgnostosAllocator {
     /// Creates a new, uninitialized allocator.
     ///

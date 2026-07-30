@@ -204,12 +204,8 @@ pub fn draw_text(
         if ch == '\n' {
             break;
         }
-        let font_height = if font_height.is_some() {
-            font_height.unwrap()
-        } else {
-            FONT_HEIGHT
-        };
 
+        let font_height = font_height.unwrap_or(FONT_HEIGHT);
         let char_raster = match get_raster(ch, FONT_WEIGHT, font_height) {
             Some(r) => r,
             None => match get_raster('?', FONT_WEIGHT, FONT_HEIGHT) {

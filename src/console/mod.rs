@@ -306,7 +306,7 @@ pub(crate) fn zoom_out() {
 
 /// Returns only the command lines from history (lines starting with [`PROMPT`]),
 /// excluding empty lines and `^C` entries. Used for up/down arrow history recall.
-fn command_history<'a>(history: &'a [String]) -> Vec<&'a String> {
+fn command_history(history: &[String]) -> Vec<&String> {
     history
         .iter()
         .filter(|line| line.starts_with(PROMPT) && line.as_str() != "^C" && !line.is_empty())

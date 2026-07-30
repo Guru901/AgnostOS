@@ -1,2 +1,3 @@
-esp/*
-target/*
+/esp/*
+/target/*
+/docs/*
