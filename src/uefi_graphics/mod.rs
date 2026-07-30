@@ -3,6 +3,7 @@ use uefi::{
     proto::console::gop::GraphicsOutput,
 };
 
+#[must_use]
 pub fn init_gop() -> ScopedProtocol<GraphicsOutput> {
     let gop_handle = boot::get_handle_for_protocol::<GraphicsOutput>()
         .expect("missing graphics output protocol");

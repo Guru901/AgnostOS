@@ -144,7 +144,7 @@ impl fmt::Write for KWriter {
 /// Internal print function — acquires the [`KWRITER`] lock and calls
 /// [`fmt::Write::write_fmt`]. Use the [`kprint!`] and [`kprintln!`] macros
 /// instead of calling this directly.
-pub fn _kprint(args: fmt::Arguments) {
+pub fn kprint(args: fmt::Arguments) {
     use fmt::Write;
     if let Some(writer) = KWRITER.lock().as_mut() {
         writer.write_fmt(args).ok();
@@ -155,7 +155,7 @@ pub fn _kprint(args: fmt::Arguments) {
 #[macro_export]
 macro_rules! kprint {
     ($($arg:tt)*) => {
-        $crate::console::_kprint(format_args!($($arg)*))
+        $crate::console::kprint(format_args!($($arg)*))
     };
 }
 
@@ -173,7 +173,7 @@ macro_rules! kprintln {
 /// history. Called by the `clear` shell command and Ctrl+L.
 pub(crate) fn reset() {
     if let Some(writer) = KWRITER.lock().as_mut() {
-        graphics::clear_background(&writer.fb, color::BLACK);
+        graphics::clear_background(&writer.fb, &color::BLACK);
         writer.x = 0;
         writer.y = 0;
         writer.history.clear();
@@ -282,10 +282,9 @@ pub(crate) fn zoom_in() {
         writer.font_size = match writer.font_size {
             RasterHeight::Size16 => RasterHeight::Size20,
             RasterHeight::Size20 => RasterHeight::Size24,
-            RasterHeight::Size24 => RasterHeight::Size32,
-            RasterHeight::Size32 => RasterHeight::Size32, // already at max
+            RasterHeight::Size24 | RasterHeight::Size32 => RasterHeight::Size32, // already at max
         };
-        graphics::clear_background(&writer.fb, color::BLACK);
+        graphics::clear_background(&writer.fb, &color::BLACK);
     }
     print_history();
     kprint!("{PROMPT}");
@@ -297,10 +296,9 @@ pub(crate) fn zoom_out() {
         writer.font_size = match writer.font_size {
             RasterHeight::Size32 => RasterHeight::Size24,
             RasterHeight::Size24 => RasterHeight::Size20,
-            RasterHeight::Size20 => RasterHeight::Size16,
-            RasterHeight::Size16 => RasterHeight::Size16, // already at min
+            RasterHeight::Size20 | RasterHeight::Size16 => RasterHeight::Size16, // already at min
         };
-        graphics::clear_background(&writer.fb, color::BLACK);
+        graphics::clear_background(&writer.fb, &color::BLACK);
     }
     print_history();
     kprint!("{PROMPT}");

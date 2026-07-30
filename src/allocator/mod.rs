@@ -18,7 +18,7 @@ struct FreeChunk {
     next: *mut FreeChunk,
 }
 
-/// A linked-list based heap allocator for the AgnostOs kernel.
+/// A linked-list based heap allocator for the `AgnostOS` kernel.
 ///
 /// Free memory regions are tracked as a singly-linked list of [`FreeChunk`]s.
 /// Each chunk stores its metadata (size + next pointer) directly inside the
@@ -49,6 +49,7 @@ impl AgnostosAllocator {
     /// Creates a new, uninitialized allocator.
     ///
     /// Must call [`init`] before any allocations are made.
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             head: spin::Mutex::new(core::ptr::null_mut()),
@@ -68,9 +69,10 @@ impl AgnostosAllocator {
     /// (GOP framebuffer pointer must already be saved before calling this).
     /// After this call, all UEFI boot services are unavailable.
     pub fn init(&self) {
-        if HEAP_SIZE.load(Ordering::Relaxed) > 0 {
-            panic!("Allocator already initialised")
-        }
+        assert!(
+            HEAP_SIZE.load(Ordering::Relaxed) == 0,
+            "Allocator already initialised"
+        );
 
         // Exit boot services — after this point, no UEFI boot service calls are valid.
         // SAFETY: initialization is one-shot and the caller has finished using
@@ -91,17 +93,15 @@ impl AgnostosAllocator {
             }
         }
 
-        if heap_size == 0 {
-            panic!("Failed to initialise heap");
-        }
-
-        if heap_size < core::mem::size_of::<FreeChunk>() {
-            panic!("Heap is too small");
-        }
-
-        if heap_start % core::mem::size_of::<FreeChunk>() != 0 {
-            panic!("Heap is misaligned");
-        }
+        assert!(heap_size != 0, "Failed to initialise heap");
+        assert!(
+            heap_size >= core::mem::size_of::<FreeChunk>(),
+            "Heap is too small"
+        );
+        assert!(
+            heap_start.is_multiple_of(core::mem::size_of::<FreeChunk>()),
+            "Heap is misaligned"
+        );
 
         // Store heap info globally so commands like `meminfo` can read them.
         HEAP_START.store(heap_start, Ordering::Relaxed);

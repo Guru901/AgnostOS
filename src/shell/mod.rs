@@ -29,7 +29,7 @@ use crate::{
 /// - Arrow up/down navigate command history.
 /// - Ctrl+Plus/Minus zoom the font in/out.
 pub fn init(fb: &Framebuffer) -> ! {
-    graphics::clear_background(fb, color::BLACK);
+    graphics::clear_background(fb, &color::BLACK);
     let mut line = String::new();
 
     kprint!("{PROMPT}");

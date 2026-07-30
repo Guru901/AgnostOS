@@ -24,6 +24,7 @@ pub const WHITE: Color = Color::new(255, 255, 255);
 pub const BLACK: Color = Color::new(0, 0, 0);
 
 impl Color {
+    #[must_use]
     pub const fn new(r: u8, g: u8, b: u8) -> Self {
         Self { r, g, b }
     }
