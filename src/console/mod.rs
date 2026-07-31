@@ -12,6 +12,7 @@
 //! - Block cursor rendering
 //! - Backspace with visual erase
 
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::fmt;
@@ -28,10 +29,14 @@ use crate::{
 struct KWriter {
     /// Raw framebuffer to draw into.
     fb: Framebuffer,
-    /// Current cursor X position in pixels.
+    /// Current cursor position in.
     column: usize,
-    /// Current cursor Y position in pixels.
+    /// Current cursor position in.
     row: usize,
+    /// Screen cells occupied by the glyphs in `current_line`, in draw order.
+    /// Keeping these positions lets backspace erase the cell that was actually
+    /// rendered, including when the line crossed a wrap boundary.
+    glyph_cells: Vec<Cell>,
     /// All lines that have been completed (ended with `\n`) since the last
     /// [`reset`]. Used for zoom redraw and command history recall.
     history: Vec<String>,
@@ -42,6 +47,13 @@ struct KWriter {
     /// Index into the command history for up/down arrow recall.
     /// `None` means the user is not currently browsing history.
     history_index: Option<usize>,
+}
+
+/// A terminal-cell position, independent of its pixel representation.
+#[derive(Clone, Copy)]
+struct Cell {
+    column: usize,
+    row: usize,
 }
 
 // SAFETY: Single-core kernel — no actual concurrent access occurs.
@@ -78,6 +90,7 @@ pub fn init(fb: &Framebuffer) {
         fb,
         column: 0,
         row: 0,
+        glyph_cells: Vec::new(),
         font_size: RasterHeight::Size16,
         current_line: String::new(),
         history: Vec::new(),
@@ -119,6 +132,7 @@ impl fmt::Write for KWriter {
             if ch == '\n' {
                 // flush current line into history and move cursor down
                 self.history.push(core::mem::take(&mut self.current_line));
+                self.glyph_cells.clear();
                 self.column = 0;
                 self.row += 1;
                 self.check_scroll(fh);
@@ -128,7 +142,7 @@ impl fmt::Write for KWriter {
             self.current_line.push(ch);
 
             // wrap to next line if we've reached the right edge
-            if self.column * fw >= width {
+            if (self.column + 1) * fw > width {
                 self.column = 0;
                 self.row += 1;
             }
@@ -142,6 +156,10 @@ impl fmt::Write for KWriter {
                 color::WHITE,
                 Some(self.font_size),
             );
+            self.glyph_cells.push(Cell {
+                column: self.column,
+                row: self.row,
+            });
             self.column += 1;
         }
 
@@ -184,6 +202,7 @@ pub(crate) fn reset() {
         graphics::clear_background(&writer.fb, &color::BLACK);
         writer.column = 0;
         writer.row = 0;
+        writer.glyph_cells.clear();
         writer.history.clear();
         writer.current_line.clear();
         writer.history_index = None;
@@ -197,21 +216,17 @@ pub(crate) fn backspace() {
         let fh = font_h(writer.font_size);
         let fw = font_w(writer.font_size);
 
-        if writer.x() == 0 {
-            if writer.y() == 0 {
-                return; // already at top-left, nothing to erase
-            }
-            // wrap back to end of previous line
-            writer.row -= 1;
-            writer.column = writer.fb.width / fw;
-        } else {
-            writer.column -= 1;
-        }
-
         // keep logical input in sync with erased glyph
-        if writer.current_line.chars().count() > PROMPT.chars().count() {
-            writer.current_line.pop();
+        if writer.current_line.chars().count() <= PROMPT.chars().count() {
+            return;
         }
+        writer.current_line.pop();
+
+        let Some(cell) = writer.glyph_cells.pop() else {
+            return;
+        };
+        writer.column = cell.column;
+        writer.row = cell.row;
 
         // paint over the erased character with background color
         crate::graphics::draw_rec(
@@ -228,6 +243,13 @@ pub(crate) fn draw_cursor() {
     if let Some(writer) = KWRITER.lock().as_mut() {
         let fh = font_h(writer.font_size);
         let fw = font_w(writer.font_size);
+
+        if writer.fb.width < writer.x() + fw {
+            writer.column = 0;
+            writer.row += 1;
+            writer.check_scroll(fh);
+        }
+
         crate::graphics::draw_rec(
             &writer.fb,
             (writer.x(), writer.y()),
@@ -408,6 +430,13 @@ fn redraw_input_line(writer: &mut KWriter, text: &str) {
     writer.current_line.clear();
     writer.current_line.push_str(PROMPT);
     writer.current_line.push_str(text);
+    writer.glyph_cells.clear();
+    writer
+        .glyph_cells
+        .extend((0..writer.current_line.chars().count()).map(|column| Cell {
+            column,
+            row: writer.row,
+        }));
     writer.column = writer.current_line.chars().count();
 }
 
