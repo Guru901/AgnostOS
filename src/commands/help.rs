@@ -8,43 +8,43 @@ pub(crate) fn help(args: &[&str]) {
     if let Some(cmd) = args.first() {
         let cmd = Commands::from(*cmd);
         match cmd {
-            Commands::HELP => {
+            Commands::Help => {
                 kprintln!("help - show available commands");
                 kprintln!("usage: help [command]");
                 kprintln!("example: help echo");
             }
-            Commands::ECHO => {
+            Commands::Echo => {
                 kprintln!("echo - print text to the screen");
                 kprintln!("usage: echo <text>");
                 kprintln!("example: echo hello world");
             }
-            Commands::CLEAR => {
+            Commands::Clear => {
                 kprintln!("clear - clear the screen and reset cursor");
                 kprintln!("usage: clear");
             }
-            Commands::ABOUT => {
+            Commands::About => {
                 kprintln!("about - show information about AgnostOS");
                 kprintln!("usage: about");
             }
-            Commands::HISTORY => {
+            Commands::History => {
                 kprintln!("history - reprint visible screen history");
                 kprintln!("usage: history");
             }
-            Commands::FONT => {
+            Commands::Font => {
                 kprintln!("font - change the font size");
                 kprintln!("usage: font <16|20|24|32>");
                 kprintln!("example: font 24");
             }
-            Commands::MEMINFO => {
+            Commands::Meminfo => {
                 kprintln!("meminfo - show heap memory information");
                 kprintln!("usage: meminfo");
             }
-            Commands::SHUTDOWN => {
+            Commands::Shutdown => {
                 kprintln!("shutdown - shuts the machine down instantly");
                 kprintln!("usage: shutdown");
             }
-            Commands::UNKNOWN => kprintln!("unknown command: {}", cmd.text()),
-            Commands::EMPTY => {}
+            Commands::Unknown => kprintln!("unknown command: {}", cmd.text()),
+            Commands::Empty => {}
         }
     } else {
         kprintln!("AgnostOS shell - available commands:");
