@@ -55,3 +55,9 @@ This is an experimental learning project, not a production operating system.
 Contributions are welcome. Please read the [contribution guidelines](Contributing.md)
 before opening a change. For a new feature or a large architectural change,
 discuss the direction with the maintainers first.
+
+## License
+
+AgnostOS is licensed under the GNU General Public License v3.0 or later (GPL-3.0-or-later).
+
+See the [LICENSE](LICENSE) file for details.

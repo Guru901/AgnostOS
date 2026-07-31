@@ -2,6 +2,7 @@
 name = "agnostos"
 version = "0.1.0"
 edition = "2024"
+license = "GPL-3.0-or-later"
 
 [dependencies]
 noto-sans-mono-bitmap = { version = "0.3", features = ["size_16", "size_20", "size_24", "size_32", "regular"] }
@@ -11,3 +12,4 @@ uefi = "0.37.0"
 
 [profile.release]
 panic = "abort"
+
