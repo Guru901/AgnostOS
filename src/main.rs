@@ -23,7 +23,13 @@ fn main() -> Status {
     uefi::helpers::init().unwrap();
 
     let mut gop = uefi_graphics::init_gop();
-    let fb = Framebuffer::new(&mut gop);
+    let fb = match Framebuffer::new(&mut gop) {
+        Ok(fb) => fb,
+        Err(error) => {
+            uefi::println!("Unsupported framebuffer configuration: {error:?}");
+            return Status::UNSUPPORTED;
+        }
+    };
 
     console::init(&fb);
     uefi::println!("Exiting boot services in 1 seconds...");

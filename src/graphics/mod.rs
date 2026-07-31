@@ -12,24 +12,50 @@ pub struct Framebuffer {
     pub width: usize,
     pub height: usize,
     pub stride: usize,
-    pub is_bgr: bool, // true if pixel format is BGR, false if RGB
+    /// Pixel layout selected by GOP. Direct rendering supports only `Rgb` and
+    /// `Bgr`, both of which are 32-bit formats.
+    pub pixel_format: PixelFormat,
+    /// Number of bytes reported by GOP for the framebuffer mapping.
+    pub byte_len: usize,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum FramebufferError {
+    UnsupportedPixelFormat(PixelFormat),
+    InvalidGeometry,
+    FramebufferTooSmall { required: usize, actual: usize },
 }
 
 impl Framebuffer {
-    pub fn new(gop: &mut GraphicsOutput) -> Self {
+    pub fn new(gop: &mut GraphicsOutput) -> Result<Self, FramebufferError> {
         let mode_info = gop.current_mode_info();
         let (width, height) = mode_info.resolution();
         let stride = mode_info.stride();
-        let is_bgr = matches!(mode_info.pixel_format(), PixelFormat::Bgr);
-        let ptr = gop.frame_buffer().as_mut_ptr();
+        let pixel_format = mode_info.pixel_format();
 
-        Self {
-            ptr,
+        if !matches!(pixel_format, PixelFormat::Rgb | PixelFormat::Bgr) {
+            return Err(FramebufferError::UnsupportedPixelFormat(pixel_format));
+        }
+
+        let required = Self::required_byte_len(width, height, stride)
+            .ok_or(FramebufferError::InvalidGeometry)?;
+        let mut framebuffer = gop.frame_buffer();
+        let byte_len = framebuffer.size();
+        if byte_len < required {
+            return Err(FramebufferError::FramebufferTooSmall {
+                required,
+                actual: byte_len,
+            });
+        }
+
+        Ok(Self {
+            ptr: framebuffer.as_mut_ptr(),
             width,
             height,
             stride,
-            is_bgr,
-        }
+            pixel_format,
+            byte_len,
+        })
     }
 
     #[doc(hidden)]
@@ -47,29 +73,52 @@ impl Framebuffer {
             width: WIDTH,
             height: HEIGHT,
             stride: WIDTH,
-            is_bgr: true,
+            pixel_format: PixelFormat::Bgr,
+            byte_len: WIDTH * HEIGHT * 4,
         }
     }
-}
 
-impl Framebuffer {
+    fn required_byte_len(width: usize, height: usize, stride: usize) -> Option<usize> {
+        if width > stride {
+            return None;
+        }
+
+        stride.checked_mul(height)?.checked_mul(4)
+    }
+
+    /// Returns whether this framebuffer is suitable for direct 32-bit drawing.
+    /// Drawing functions treat an invalid framebuffer as a no-op.
+    pub fn is_drawable(&self) -> bool {
+        !self.ptr.is_null()
+            && matches!(self.pixel_format, PixelFormat::Rgb | PixelFormat::Bgr)
+            && Self::required_byte_len(self.width, self.height, self.stride)
+                .is_some_and(|required| required <= self.byte_len)
+    }
+
     #[inline]
-    unsafe fn write_pixel(&self, pixel_index: usize, color: &Color) {
-        let rgb = if self.is_bgr {
-            [color.b, color.g, color.r]
-        } else {
-            [color.r, color.g, color.b]
+    unsafe fn write_pixel(&self, pixel_index: usize, color: &Color) -> bool {
+        let rgb = match self.pixel_format {
+            PixelFormat::Bgr => [color.b, color.g, color.r],
+            PixelFormat::Rgb => [color.r, color.g, color.b],
+            _ => return false,
         };
-        // SAFETY: callers calculate `pixel_index` from coordinates within the
-        // framebuffer dimensions; the GOP framebuffer has four bytes per pixel.
-        let p = unsafe { self.ptr.add(4 * pixel_index) };
+        let Some(offset) = pixel_index.checked_mul(4) else {
+            return false;
+        };
+        if offset.checked_add(4).is_none_or(|end| end > self.byte_len) {
+            return false;
+        }
+        // SAFETY: the checked offset identifies a complete 32-bit pixel within
+        // the framebuffer byte range.
+        let p = unsafe { self.ptr.add(offset) };
         // SAFETY: `p` points to the four-byte pixel selected above, so its first
         // three bytes can be written with the selected channel ordering.
         unsafe {
-            p.write(rgb[0]);
-            p.add(1).write(rgb[1]);
-            p.add(2).write(rgb[2]);
+            p.write_volatile(rgb[0]);
+            p.add(1).write_volatile(rgb[1]);
+            p.add(2).write_volatile(rgb[2]);
         }
+        true
     }
 }
 
@@ -84,6 +133,10 @@ impl Framebuffer {
 /// agnostos::graphics::clear_background(&fb, &Color { r: 255, g: 255, b: 255 });
 /// ```
 pub fn clear_background(fb: &Framebuffer, color: &Color) {
+    if !fb.is_drawable() {
+        return;
+    }
+
     for row in 0..fb.height {
         for col in 0..fb.width {
             let pixel_index = row * fb.stride + col;
@@ -105,8 +158,15 @@ pub fn clear_background(fb: &Framebuffer, color: &Color) {
 /// agnostos::graphics::draw_rec(&fb, (100, 100), (100, 100), Color { r: 0, g: 0, b: 0 });
 /// ```
 pub fn draw_rec(fb: &Framebuffer, (x, y): (usize, usize), (w, h): (usize, usize), color: Color) {
-    let x2 = x + w;
-    let y2 = y + h;
+    if !fb.is_drawable() {
+        return;
+    }
+    let Some(x2) = x.checked_add(w) else {
+        return;
+    };
+    let Some(y2) = y.checked_add(h) else {
+        return;
+    };
     assert!(x2 <= fb.width, "Bad X coordinate");
     assert!(y2 <= fb.height, "Bad Y coordinate");
 
@@ -130,6 +190,10 @@ pub fn draw_rec(fb: &Framebuffer, (x, y): (usize, usize), (w, h): (usize, usize)
 /// agnostos::graphics::draw_circle(&fb, 20, (100, 100), Color { r: 0, g: 0, b: 0 });
 /// ```
 pub fn draw_circle(fb: &Framebuffer, radius: usize, (cx, cy): (usize, usize), color: Color) {
+    if !fb.is_drawable() {
+        return;
+    }
+
     let r = radius as isize;
     let cx = cx as isize;
     let cy = cy as isize;
@@ -164,6 +228,10 @@ pub fn draw_circle(fb: &Framebuffer, radius: usize, (cx, cy): (usize, usize), co
 /// agnostos::graphics::draw_line(&fb, (100, 100), (100, 100), Color { r: 0, g: 0, b: 0 });
 /// ```
 pub fn draw_line(fb: &Framebuffer, (x1, y1): (i64, i64), (x2, y2): (i64, i64), color: Color) {
+    if !fb.is_drawable() {
+        return;
+    }
+
     let dx = (x2 - x1).abs();
     let dy = (y2 - y1).abs();
     let sx = if x2 >= x1 { 1 } else { -1 };
@@ -201,7 +269,18 @@ pub fn draw_line(fb: &Framebuffer, (x1, y1): (i64, i64), (x2, y2): (i64, i64), c
 
 /// Scrolls the framebuffer content up by `rows` pixel rows, clearing the freed strip at the bottom.
 pub fn scroll_up(fb: &Framebuffer, rows: usize) {
-    let bpp = 4usize; // bytes per pixel
+    if !fb.is_drawable() {
+        return;
+    }
+    if rows >= fb.height {
+        clear_background(fb, &Color::new(0, 0, 0));
+        return;
+    }
+    if rows == 0 {
+        return;
+    }
+
+    let bpp = 4usize; // validated above: RGB and BGR GOP modes are 32-bit
     for row in rows..fb.height {
         for col in 0..fb.width {
             let src = (row * fb.stride + col) * bpp;
@@ -210,8 +289,8 @@ pub fn scroll_up(fb: &Framebuffer, rows: usize) {
             // and columns, and each pixel occupies `bpp` bytes in the framebuffer.
             unsafe {
                 for b in 0..bpp {
-                    let val = fb.ptr.add(src + b).read();
-                    fb.ptr.add(dst + b).write(val);
+                    let val = fb.ptr.add(src + b).read_volatile();
+                    fb.ptr.add(dst + b).write_volatile(val);
                 }
             }
         }
@@ -222,10 +301,10 @@ pub fn scroll_up(fb: &Framebuffer, rows: usize) {
             let idx = (row * fb.stride + col) * bpp;
             // SAFETY: these offsets address the valid bottom rows being cleared.
             unsafe {
-                fb.ptr.add(idx).write(0);
-                fb.ptr.add(idx + 1).write(0);
-                fb.ptr.add(idx + 2).write(0);
-                fb.ptr.add(idx + 3).write(0);
+                fb.ptr.add(idx).write_volatile(0);
+                fb.ptr.add(idx + 1).write_volatile(0);
+                fb.ptr.add(idx + 2).write_volatile(0);
+                fb.ptr.add(idx + 3).write_volatile(0);
             }
         }
     }
@@ -248,6 +327,10 @@ pub fn draw_text(
     color: Color,
     font_height: Option<RasterHeight>,
 ) {
+    if !fb.is_drawable() {
+        return;
+    }
+
     let mut cursor_x = x;
 
     for ch in text.chars() {
@@ -265,7 +348,10 @@ pub fn draw_text(
         };
 
         draw_glyph(fb, &char_raster, cursor_x, y, &color);
-        cursor_x += char_raster.width();
+        let Some(next_cursor_x) = cursor_x.checked_add(char_raster.width()) else {
+            return;
+        };
+        cursor_x = next_cursor_x;
     }
 }
 
@@ -276,8 +362,12 @@ fn draw_glyph(fb: &Framebuffer, raster: &RasterizedChar, x: usize, y: usize, col
                 continue; // fully transparent, skip
             }
 
-            let px = x + col;
-            let py = y + row;
+            let Some(px) = x.checked_add(col) else {
+                continue;
+            };
+            let Some(py) = y.checked_add(row) else {
+                continue;
+            };
 
             if px >= fb.width || py >= fb.height {
                 continue;
@@ -309,7 +399,8 @@ mod tests {
             width: 5,
             height: 3,
             stride: 5,
-            is_bgr: false,
+            pixel_format: PixelFormat::Rgb,
+            byte_len: pixels.len(),
         };
 
         draw_line(&fb, (1, 1), (3, 1), Color::new(255, 0, 0));
@@ -318,5 +409,37 @@ mod tests {
             let offset = (fb.stride + x) * 4;
             assert_eq!(&pixels[offset..offset + 3], &[255, 0, 0]);
         }
+    }
+
+    #[test]
+    fn malformed_framebuffer_is_not_drawable_or_written() {
+        let mut pixels = vec![0x55u8; 3];
+        let fb = Framebuffer {
+            ptr: pixels.as_mut_ptr(),
+            width: 1,
+            height: 1,
+            stride: 1,
+            pixel_format: PixelFormat::Rgb,
+            byte_len: pixels.len(),
+        };
+
+        assert!(!fb.is_drawable());
+        clear_background(&fb, &Color::new(1, 2, 3));
+        assert_eq!(&pixels, &[0x55, 0x55, 0x55]);
+    }
+
+    #[test]
+    fn bitmask_framebuffer_is_not_drawable() {
+        let mut pixels = vec![0u8; 4];
+        let fb = Framebuffer {
+            ptr: pixels.as_mut_ptr(),
+            width: 1,
+            height: 1,
+            stride: 1,
+            pixel_format: PixelFormat::Bitmask,
+            byte_len: pixels.len(),
+        };
+
+        assert!(!fb.is_drawable());
     }
 }

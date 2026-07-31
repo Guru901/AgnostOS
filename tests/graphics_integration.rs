@@ -7,6 +7,7 @@ use agnostos::{
     color::Color,
     graphics::{self, Framebuffer},
 };
+use uefi::proto::console::gop::PixelFormat;
 
 fn framebuffer(bytes: &mut [u8], width: usize, height: usize) -> Framebuffer {
     Framebuffer {
@@ -14,7 +15,8 @@ fn framebuffer(bytes: &mut [u8], width: usize, height: usize) -> Framebuffer {
         width,
         height,
         stride: width,
-        is_bgr: false,
+        pixel_format: PixelFormat::Rgb,
+        byte_len: bytes.len(),
     }
 }
 
