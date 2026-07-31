@@ -1,14 +1,57 @@
 <div align="center">
   <h1>AgnostOs</h1>
-  <p>Goal of this project is to make an operating system from scratch, mostly for learning.</p>
+  <p>A small UEFI operating system written in Rust, built primarily as a learning project.</p>
 </div>
 
-## TODOS
 
-- Improve scrollback UX (e.g., smoother paging/navigation)
+## Prerequisites
+
+You will need:
+
+- A recent Rust toolchain with Cargo and `rustup`.
+- The `x86_64-unknown-uefi` Rust target.
+- QEMU with the `qemu-system-x86_64` executable available on your `PATH`.
+- Bash to run the provided build script.
+
+Install the required Rust target once:
+
+```sh
+rustup target add x86_64-unknown-uefi
+```
+
+The repository includes the UEFI firmware image required by the run script at
+`bios/OVMF.4m.fd`.
+
+## Build and run
+
+From the repository root, run:
+
+```sh
+./build.sh
+```
+
+The script builds the release UEFI executable, creates a temporary EFI System
+Partition under `esp/`, and launches it in QEMU. Close the QEMU window to stop
+the emulator. Generated files in `target/` and `esp/` are ignored by Git.
+
+To build without launching QEMU:
+
+```sh
+cargo build --release
+```
+
+The resulting UEFI executable is written to:
+
+```text
+target/x86_64-unknown-uefi/release/agnostos.efi
+```
+
+## Project status
+
+This is an experimental learning project, not a production operating system.
 
 ## Contributing
 
-if you are willing to contribute to this project please read and follow the [guidelines](Contributing.md).
-
-also keep in mind if you plan to implement new features or plan on making big changes to the code consult the developers working on it first 🥲.
+Contributions are welcome. Please read the [contribution guidelines](Contributing.md)
+before opening a change. For a new feature or a large architectural change,
+discuss the direction with the maintainers first.
