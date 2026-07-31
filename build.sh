@@ -24,4 +24,4 @@ fi
 cargo build --release --target x86_64-unknown-uefi --features uefi-bin
 mkdir -p esp/EFI/BOOT
 cp target/x86_64-unknown-uefi/release/agnostos.efi esp/EFI/BOOT/BOOTX64.EFI
-exec qemu-system-x86_64 -bios ./bios/OVMF.4m.fd -drive format=raw,file=fat:rw:esp
+exec qemu-system-x86_64 -bios ./bios/OVMF.4m.fd -drive format=raw,file=fat:rw:esp -device isa-debug-exit,iobase=0xf4,iosize=0x04

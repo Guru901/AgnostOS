@@ -17,6 +17,7 @@ noto-sans-mono-bitmap = { version = "0.3", features = ["size_16", "size_20", "si
 pc-keyboard = "0.9.0"
 spin = "0.12.0"
 uefi = "0.37.0"
+x86_64 = { version = "0.15.5", default-features = false, features = ["instructions"] }
 
 [profile.release]
 panic = "abort"

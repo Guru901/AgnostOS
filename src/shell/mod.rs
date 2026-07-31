@@ -79,6 +79,36 @@ pub fn init(fb: &Framebuffer) -> ! {
     }
 }
 
+enum Commands {
+    HELP,
+    ABOUT,
+    HISTORY,
+    ECHO,
+    MEMINFO,
+    FONT,
+    CLEAR,
+    SHUTDOWN,
+    EMPTY,
+    UNKNOWN,
+}
+
+impl From<&str> for Commands {
+    fn from(value: &str) -> Self {
+        match value {
+            "help" => Commands::HELP,
+            "about" => Commands::ABOUT,
+            "history" => Commands::HISTORY,
+            "echo" => Commands::ECHO,
+            "meminfo" => Commands::MEMINFO,
+            "font" => Commands::FONT,
+            "clear" => Commands::CLEAR,
+            "shutdown" => Commands::SHUTDOWN,
+            "" => Commands::EMPTY,
+            _ => Commands::UNKNOWN,
+        }
+    }
+}
+
 /// Parses and dispatches a command string.
 ///
 /// Splits the input into a command name, flags (tokens starting with `-`),
@@ -88,6 +118,7 @@ fn run_command(command: &str) {
     let command = command.trim();
     let mut iter = command.split_whitespace();
     let command = iter.next().unwrap_or("");
+    let command = Commands::from(command);
 
     // separate flags (e.g. --verbose) from positional args
     let mut flags: Vec<&str> = Vec::new();
@@ -102,26 +133,29 @@ fn run_command(command: &str) {
     let _ = flags; // flags parsed but reserved for future use
 
     match command {
-        "help" => help(&args),
-        "about" => kprintln!("AgnostOS v0.1 - written in Rust \n codeberg.com/guru901/agnostos"),
-        "history" => console::print_history(),
-        "echo" => kprintln!("{}", args.join(" ")),
-        "meminfo" => {
+        Commands::HELP => help(&args),
+        Commands::ABOUT => {
+            kprintln!("AgnostOS v0.1 - written in Rust \n codeberg.com/guru901/agnostos")
+        }
+        Commands::HISTORY => console::print_history(),
+        Commands::ECHO => kprintln!("{}", args.join(" ")),
+        Commands::MEMINFO => {
             let start = HEAP_START.load(Ordering::Relaxed);
             let size = HEAP_SIZE.load(Ordering::Relaxed);
             kprintln!("heap start: {:#x}", start);
             kprintln!("heap size:  {}mb", size / (1024 * 1024));
         }
-        "font" => match args.first().copied().unwrap_or("") {
+        Commands::FONT => match args.first().copied().unwrap_or("") {
             "16" => console::set_font_size(RasterHeight::Size16),
             "20" => console::set_font_size(RasterHeight::Size20),
             "24" => console::set_font_size(RasterHeight::Size24),
             "32" => console::set_font_size(RasterHeight::Size32),
             _ => kprintln!("usage: font <16|20|24|32>"),
         },
-        "clear" => console::reset(),
-        "" => {}
-        _ => kprintln!("Unknown command"),
+        Commands::CLEAR => console::reset(),
+        Commands::SHUTDOWN => exit_qemu(0),
+        Commands::EMPTY => {}
+        Commands::UNKNOWN => kprintln!("Unknown command"),
     }
 }
 
@@ -175,8 +209,22 @@ fn help(args: &[&str]) {
         kprintln!("  history   reprint screen history");
         kprintln!("  font      change font size");
         kprintln!("  meminfo   show heap memory information");
+        kprintln!("  shutdown  shuts the machine down");
         kprintln!("");
         kprintln!("tip: type 'help <command>' for more details");
         kprintln!("tip: ctrl+c to cancel, ctrl+plus/minus to zoom");
+    }
+}
+
+use x86_64::instructions::port::Port;
+
+pub fn exit_qemu(code: u32) -> ! {
+    unsafe {
+        let mut port = Port::<u32>::new(0xf4);
+        port.write(code);
+    }
+
+    loop {
+        x86_64::instructions::hlt();
     }
 }
