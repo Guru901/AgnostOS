@@ -79,7 +79,7 @@ pub(crate) fn run_command(command: &str) {
     match command {
         Commands::Help => help(&args),
         Commands::About => {
-            kprintln!("AgnostOS v0.1 - written in Rust \n codeberg.com/guru901/agnostos")
+            kprintln!("AgnostOS v0.1 - written in Rust \n codeberg.com/guru901/agnostos");
         }
         Commands::History => console::print_history(),
         Commands::Echo => kprintln!("{}", args.join(" ")),
