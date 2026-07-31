@@ -25,3 +25,5 @@ pub mod keyboard;
 
 /// Module that contains the code for shell.
 pub mod shell;
+
+pub mod commands;
