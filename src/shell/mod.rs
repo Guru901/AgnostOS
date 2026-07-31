@@ -62,8 +62,8 @@ pub fn init(fb: &Framebuffer) -> ! {
                     line.clear();
                     kprint!("{PROMPT}");
                 }
-                KeyboardEvent::ZoomIn => console::zoom_in(),
-                KeyboardEvent::ZoomOut => console::zoom_out(),
+                KeyboardEvent::ZoomIn => console::zoom_in(&line),
+                KeyboardEvent::ZoomOut => console::zoom_out(&line),
                 KeyboardEvent::ArrowUp => console::arrow_up(&mut line),
                 KeyboardEvent::ArrowDown => console::arrow_down(&mut line),
                 KeyboardEvent::CtrlL => {

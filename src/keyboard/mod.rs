@@ -1,17 +1,14 @@
-use core::arch::asm;
 use pc_keyboard::{
     DecodedKey, HandleControl, KeyCode, KeyState, PS2Keyboard, ScancodeSet1, layouts,
 };
 use spin::Mutex;
+use x86_64::instructions::port::Port;
 
 unsafe fn inb(port: u16) -> u8 {
-    let val: u8;
+    let mut port = Port::new(port);
     // SAFETY: callers use the legacy PS/2 controller ports (0x64 and 0x60),
     // which are available while the kernel is running on the target hardware.
-    unsafe {
-        asm!("in al, dx", out("al") val, in("dx") port);
-    }
-    val
+    unsafe { port.read() }
 }
 
 static KEYBOARD: Mutex<PS2Keyboard<layouts::Us104Key, ScancodeSet1>> =

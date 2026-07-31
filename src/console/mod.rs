@@ -277,7 +277,7 @@ pub(crate) fn print_history() {
 }
 
 /// Increases the font size by one step (up to Size32) and redraws history.
-pub(crate) fn zoom_in() {
+pub(crate) fn zoom_in(current_input: &str) {
     if let Some(writer) = KWRITER.lock().as_mut() {
         writer.font_size = match writer.font_size {
             RasterHeight::Size16 => RasterHeight::Size20,
@@ -287,11 +287,11 @@ pub(crate) fn zoom_in() {
         graphics::clear_background(&writer.fb, &color::BLACK);
     }
     print_history();
-    kprint!("{PROMPT}");
+    kprint!("{PROMPT}{current_input}");
 }
 
 /// Decreases the font size by one step (down to Size16) and redraws history.
-pub(crate) fn zoom_out() {
+pub(crate) fn zoom_out(current_input: &str) {
     if let Some(writer) = KWRITER.lock().as_mut() {
         writer.font_size = match writer.font_size {
             RasterHeight::Size32 => RasterHeight::Size24,
@@ -301,7 +301,7 @@ pub(crate) fn zoom_out() {
         graphics::clear_background(&writer.fb, &color::BLACK);
     }
     print_history();
-    kprint!("{PROMPT}");
+    kprint!("{PROMPT}{current_input}");
 }
 
 /// Returns only the command lines from history (lines starting with [`PROMPT`]),
