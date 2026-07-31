@@ -247,20 +247,15 @@ pub(crate) fn draw_cursor() {
         if writer.fb.width < writer.x() + fw {
             writer.column = 0;
             writer.row += 1;
-            crate::graphics::draw_rec(
-                &writer.fb,
-                (0, writer.y()),
-                (fw, fh - 4),
-                crate::color::WHITE,
-            );
-        } else {
-            crate::graphics::draw_rec(
-                &writer.fb,
-                (writer.x(), writer.y()),
-                (fw, fh - 4),
-                crate::color::WHITE,
-            );
+            writer.check_scroll(fh);
         }
+
+        crate::graphics::draw_rec(
+            &writer.fb,
+            (writer.x(), writer.y()),
+            (fw, fh - 4),
+            crate::color::WHITE,
+        );
     }
 }
 
