@@ -1,21 +1,17 @@
-when:
-  - event: [push, pull_request]
-
 steps:
   build:
     image: archlinux:latest
     commands:
       - pacman -Syu --noconfirm
-      - pacman -S --noconfirm rustup qemu-desktop edk2-ovmf timeout
+      - pacman -S --noconfirm rustup qemu-desktop edk2-ovmf coreutils
       - rustup default stable
       - rustup target add x86_64-unknown-uefi
 
-      - cargo build --release
+      - cargo build --release -j4
 
       - mkdir -p esp/EFI/BOOT
       - cp target/x86_64-unknown-uefi/release/agnostos.efi esp/EFI/BOOT/BOOTX64.EFI
 
-      # Smoke test (5 second timeout)
       - |
         timeout 5s qemu-system-x86_64 \
           -machine q35 \
