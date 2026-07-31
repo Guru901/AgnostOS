@@ -1,3 +1,6 @@
+use alloc::boxed::Box;
+use alloc::vec;
+
 use noto_sans_mono_bitmap::{RasterHeight, RasterizedChar, get_raster};
 use uefi::proto::console::gop::{GraphicsOutput, PixelFormat};
 
@@ -28,6 +31,25 @@ impl Framebuffer {
             is_bgr,
         }
     }
+
+    #[doc(hidden)]
+    pub fn for_doc_test() -> Self {
+        const WIDTH: usize = 300;
+        const HEIGHT: usize = 300;
+        // The examples render through a raw framebuffer pointer, so retain a
+        // heap allocation for the duration of the doctest rather than using a
+        // null pointer.  It is intentionally leaked: `Framebuffer` does not
+        // own pointers returned by `new`, and therefore cannot safely free it.
+        let pixels = Box::leak(vec![0_u8; WIDTH * HEIGHT * 4].into_boxed_slice());
+
+        Self {
+            ptr: pixels.as_mut_ptr(),
+            width: WIDTH,
+            height: HEIGHT,
+            stride: WIDTH,
+            is_bgr: true,
+        }
+    }
 }
 
 impl Framebuffer {
@@ -56,9 +78,10 @@ impl Framebuffer {
 /// **Example**
 ///
 /// ```rust
-/// use agnostos::Color;
-///
-/// agnostos::graphics::clear_background(&fb, Color { r: 255, g: 255, b: 255 });
+/// use agnostos::color::Color;
+/// use agnostos::graphics::Framebuffer;
+/// # let fb = Framebuffer::for_doc_test();
+/// agnostos::graphics::clear_background(&fb, &Color { r: 255, g: 255, b: 255 });
 /// ```
 pub fn clear_background(fb: &Framebuffer, color: &Color) {
     for row in 0..fb.height {
@@ -76,8 +99,9 @@ pub fn clear_background(fb: &Framebuffer, color: &Color) {
 /// **Example**
 ///
 /// ```rust
-/// use agnostos::Color;
-///
+/// use agnostos::color::Color;
+/// use agnostos::graphics::Framebuffer;
+/// # let fb = Framebuffer::for_doc_test();
 /// agnostos::graphics::draw_rec(&fb, (100, 100), (100, 100), Color { r: 0, g: 0, b: 0 });
 /// ```
 pub fn draw_rec(fb: &Framebuffer, (x, y): (usize, usize), (w, h): (usize, usize), color: Color) {
@@ -100,8 +124,9 @@ pub fn draw_rec(fb: &Framebuffer, (x, y): (usize, usize), (w, h): (usize, usize)
 /// **Example**
 ///
 /// ```rust
-/// use agnostos::Color;
-///
+/// use agnostos::color::Color;
+/// use agnostos::graphics::Framebuffer;
+/// # let fb = Framebuffer::for_doc_test();
 /// agnostos::graphics::draw_circle(&fb, 20, (100, 100), Color { r: 0, g: 0, b: 0 });
 /// ```
 pub fn draw_circle(fb: &Framebuffer, radius: usize, (cx, cy): (usize, usize), color: Color) {
@@ -133,8 +158,9 @@ pub fn draw_circle(fb: &Framebuffer, radius: usize, (cx, cy): (usize, usize), co
 /// **Example**
 ///
 /// ```rust
-/// use agnostos::Color;
-///
+/// use agnostos::color::Color;
+/// use agnostos::graphics::Framebuffer;
+/// # let fb = Framebuffer::for_doc_test();
 /// agnostos::graphics::draw_line(&fb, (100, 100), (100, 100), Color { r: 0, g: 0, b: 0 });
 /// ```
 pub fn draw_line(fb: &Framebuffer, (x1, y1): (i64, i64), (x2, y2): (i64, i64), color: Color) {
@@ -209,9 +235,10 @@ pub fn scroll_up(fb: &Framebuffer, rows: usize) {
 ///
 /// **Example**
 ///
-/// ```rust
-/// use agnostos::Color;
-///
+/// ```
+/// use agnostos::color::Color;
+/// use agnostos::graphics::Framebuffer;
+/// # let fb = Framebuffer::for_doc_test();
 /// agnostos::graphics::draw_text(&fb, "Random text to render", (100, 200), Color { r: 0, g: 0, b: 0 }, None);
 /// ```
 pub fn draw_text(
@@ -264,6 +291,32 @@ fn draw_glyph(fb: &Framebuffer, raster: &RasterizedChar, x: usize, y: usize, col
             let pixel_index = py * fb.stride + px;
             // SAFETY: out-of-bounds glyph pixels are skipped immediately above.
             unsafe { fb.write_pixel(pixel_index, &Color::new(r, g, b)) };
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use alloc::vec;
+
+    use super::*;
+
+    #[test]
+    fn draw_line_colors_every_pixel_on_a_horizontal_line() {
+        let mut pixels = vec![0u8; 5 * 3 * 4];
+        let fb = Framebuffer {
+            ptr: pixels.as_mut_ptr(),
+            width: 5,
+            height: 3,
+            stride: 5,
+            is_bgr: false,
+        };
+
+        draw_line(&fb, (1, 1), (3, 1), Color::new(255, 0, 0));
+
+        for x in 1..=3 {
+            let offset = (fb.stride + x) * 4;
+            assert_eq!(&pixels[offset..offset + 3], &[255, 0, 0]);
         }
     }
 }

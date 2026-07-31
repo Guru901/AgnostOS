@@ -29,3 +29,17 @@ impl Color {
         Self { r, g, b }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn converts_rgb_array_to_color() {
+        let color = Color::from([12, 34, 56]);
+
+        assert_eq!(color.r, 12);
+        assert_eq!(color.g, 34);
+        assert_eq!(color.b, 56);
+    }
+}

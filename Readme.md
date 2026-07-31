@@ -37,7 +37,7 @@ the emulator. Generated files in `target/` and `esp/` are ignored by Git.
 To build without launching QEMU:
 
 ```sh
-cargo build --release
+cargo build --release --target x86_64-unknown-uefi --features uefi-bin
 ```
 
 The resulting UEFI executable is written to:

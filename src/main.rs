@@ -6,8 +6,11 @@ use core::time::Duration;
 extern crate alloc;
 
 use agnostos::{
-    BOOT_SERVICES_EXITED, allocator::AgnostOSAllocator, console, graphics::Framebuffer, kprintln,
-    shell, uefi_graphics,
+    BOOT_SERVICES_EXITED,
+    allocator::AgnostOSAllocator,
+    console,
+    graphics::{self, Framebuffer},
+    kprintln, shell, uefi_graphics,
 };
 
 use uefi::prelude::*;
@@ -24,8 +27,6 @@ fn main() -> Status {
 
     console::init(&fb);
     uefi::println!("Exiting boot services in 1 seconds...");
-
-    boot::stall(Duration::from_millis(1000));
 
     ALLOCATOR.init();
     shell::init(&fb)

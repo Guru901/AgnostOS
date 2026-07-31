@@ -4,6 +4,14 @@ version = "0.1.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 
+[[bin]]
+name = "agnostos"
+test = false
+required-features = ["uefi-bin"]
+
+[features]
+uefi-bin = []
+
 [dependencies]
 noto-sans-mono-bitmap = { version = "0.3", features = ["size_16", "size_20", "size_24", "size_32", "regular"] }
 pc-keyboard = "0.9.0"
@@ -12,4 +20,3 @@ uefi = "0.37.0"
 
 [profile.release]
 panic = "abort"
-
