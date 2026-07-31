@@ -1,4 +1,4 @@
-//! Console module — stateful text output for the AgnostOs kernel.
+//! Console module — stateful text output for the AgnostOS kernel.
 //!
 //! Manages a [`KWriter`] instance that owns the framebuffer reference,
 //! cursor position, font size, and screen/command history. All text

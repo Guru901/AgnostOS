@@ -29,23 +29,23 @@ struct FreeChunk {
 ///
 /// On deallocation: inserts the freed region back at the head of the free list.
 /// Note: no coalescing is performed — adjacent free chunks are not merged.
-pub struct AgnostosAllocator {
+pub struct AgnostOSAllocator {
     head: spin::Mutex<*mut FreeChunk>,
 }
 
 // SAFETY: We are single-core — there is no actual concurrent access.
 // These impls exist only to satisfy Rust's type system requirements for
 // a static global allocator.
-unsafe impl Send for AgnostosAllocator {}
-unsafe impl Sync for AgnostosAllocator {}
+unsafe impl Send for AgnostOSAllocator {}
+unsafe impl Sync for AgnostOSAllocator {}
 
-impl Default for AgnostosAllocator {
+impl Default for AgnostOSAllocator {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl AgnostosAllocator {
+impl AgnostOSAllocator {
     /// Creates a new, uninitialized allocator.
     ///
     /// Must call [`init`] before any allocations are made.
@@ -120,7 +120,7 @@ impl AgnostosAllocator {
     }
 }
 
-unsafe impl GlobalAlloc for AgnostosAllocator {
+unsafe impl GlobalAlloc for AgnostOSAllocator {
     /// Allocates a memory region satisfying `layout`.
     ///
     /// Walks the free list for a chunk large enough to hold the aligned

@@ -6,14 +6,14 @@ use core::time::Duration;
 extern crate alloc;
 
 use agnostos::{
-    BOOT_SERVICES_EXITED, allocator::AgnostosAllocator, console, graphics::Framebuffer, kprintln,
+    BOOT_SERVICES_EXITED, allocator::AgnostOSAllocator, console, graphics::Framebuffer, kprintln,
     shell, uefi_graphics,
 };
 
 use uefi::prelude::*;
 
 #[global_allocator]
-pub static ALLOCATOR: AgnostosAllocator = AgnostosAllocator::new();
+pub static ALLOCATOR: AgnostOSAllocator = AgnostOSAllocator::new();
 
 #[entry]
 fn main() -> Status {

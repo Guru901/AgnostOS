@@ -1,4 +1,4 @@
-//! Shell module — interactive command-line interface for AgnostOs.
+//! Shell module — interactive command-line interface for AgnostOS.
 //!
 //! Provides a polling input loop that reads keyboard events and dispatches
 //! them to the appropriate console or command handler. Commands are parsed
@@ -103,7 +103,7 @@ fn run_command(command: &str) {
 
     match command {
         "help" => help(&args),
-        "about" => kprintln!("AgnostOs v0.1 - written in Rust \n github.com/grep-name/agnostos"),
+        "about" => kprintln!("AgnostOS v0.1 - written in Rust \n codeberg.com/guru901/agnostos"),
         "history" => console::print_history(),
         "echo" => kprintln!("{}", args.join(" ")),
         "meminfo" => {
@@ -147,7 +147,7 @@ fn help(args: &[&str]) {
                 kprintln!("usage: clear");
             }
             "about" => {
-                kprintln!("about - show information about AgnostOs");
+                kprintln!("about - show information about AgnostOS");
                 kprintln!("usage: about");
             }
             "history" => {
@@ -166,7 +166,7 @@ fn help(args: &[&str]) {
             _ => kprintln!("unknown command: {}", cmd),
         }
     } else {
-        kprintln!("AgnostOs shell - available commands:");
+        kprintln!("AgnostOS shell - available commands:");
         kprintln!("");
         kprintln!("  help      show this message, or help for a specific command");
         kprintln!("  echo      print text to the screen");

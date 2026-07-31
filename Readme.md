@@ -1,5 +1,5 @@
 <div align="center">
-  <h1>AgnostOs</h1>
+  <h1>AgnostOS</h1>
   <p>A small UEFI operating system written in Rust, built primarily as a learning project.</p>
 </div>
 
