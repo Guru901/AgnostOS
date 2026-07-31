@@ -7,7 +7,7 @@ steps:
       - rustup default stable
       - rustup target add x86_64-unknown-uefi
 
-      - cargo build --release -j4
+      - cargo build --release -j4 --target x86_64-unknown-uefi --features uefi-bin
 
       - mkdir -p esp/EFI/BOOT
       - cp target/x86_64-unknown-uefi/release/agnostos.efi esp/EFI/BOOT/BOOTX64.EFI
