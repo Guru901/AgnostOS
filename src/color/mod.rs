@@ -1,6 +1,7 @@
 /// Represents an RGB color.
 ///
 /// Each channel uses an 8-bit value in the range `0..=255`.
+#[derive(Clone, Copy)]
 pub struct Color {
     /// Red component (`0..=255`).
     pub r: u8,

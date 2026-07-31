@@ -1,16 +1,11 @@
 #![no_main]
 #![no_std]
 
-use core::time::Duration;
-
 extern crate alloc;
 
 use agnostos::{
-    BOOT_SERVICES_EXITED,
-    allocator::AgnostOSAllocator,
-    console,
-    graphics::{self, Framebuffer},
-    kprintln, shell, uefi_graphics,
+    BOOT_SERVICES_EXITED, allocator::AgnostOSAllocator, console, graphics::Framebuffer, kprintln,
+    shell, uefi_graphics,
 };
 
 use uefi::prelude::*;

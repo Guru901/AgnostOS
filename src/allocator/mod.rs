@@ -85,9 +85,17 @@ impl AgnostOSAllocator {
         let mut heap_size = 0usize;
         for descriptor in memory_map.entries() {
             if descriptor.ty == MemoryType::CONVENTIONAL {
-                let size = descriptor.page_count as usize * 4096;
+                let Ok(page_count) = usize::try_from(descriptor.page_count) else {
+                    continue;
+                };
+                let Some(size) = page_count.checked_mul(4096) else {
+                    continue;
+                };
+                let Ok(start) = usize::try_from(descriptor.phys_start) else {
+                    continue;
+                };
                 if size > heap_size {
-                    heap_start = descriptor.phys_start as usize;
+                    heap_start = start;
                     heap_size = size;
                 }
             }
@@ -137,8 +145,8 @@ unsafe impl GlobalAlloc for AgnostOSAllocator {
             let align = layout.align().max(core::mem::align_of::<FreeChunk>());
 
             let mut head = self.head.lock();
-            let mut current: *mut *mut FreeChunk = &mut *head;
-            let mut prev: *mut *mut FreeChunk = &mut *head;
+            let mut current: *mut *mut FreeChunk = &raw mut *head;
+            let mut prev: *mut *mut FreeChunk = &raw mut *head;
 
             while !(*current).is_null() {
                 let chunk = *current;
@@ -169,8 +177,8 @@ unsafe impl GlobalAlloc for AgnostOSAllocator {
                 }
 
                 // Chunk didn't fit — advance both pointers.
-                prev = &mut (*chunk).next;
-                current = &mut (*chunk).next;
+                prev = &raw mut (*chunk).next;
+                current = &raw mut (*chunk).next;
             }
 
             // No suitable chunk found — out of memory.
@@ -191,7 +199,11 @@ unsafe impl GlobalAlloc for AgnostOSAllocator {
             let mut head = self.head.lock();
 
             // Write a FreeChunk header directly into the freed memory.
-            let chunk = ptr as *mut FreeChunk;
+            debug_assert!(ptr.is_aligned());
+            // `alloc` guarantees this pointer uses at least `FreeChunk` alignment;
+            // `ptr` is erased to `u8` by the `GlobalAlloc` trait signature.
+            #[allow(clippy::cast_ptr_alignment)]
+            let chunk = ptr.cast::<FreeChunk>();
             (*chunk).size = size;
 
             // Insert at head of free list.
