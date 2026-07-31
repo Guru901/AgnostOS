@@ -22,19 +22,13 @@ Raw, low-level pointers must never be exposed to the public API.
 * Expose only safe, validated methods publicly.
 * Ensure your wrapper structures handle bound checks and lifetime enforcement internally.
 
-### 3. Prioritize Stack and Static Allocations
-During this early stage of development, we strictly avoid dynamic heap allocations to prevent memory fragmentation and initialization complexity.
-* Maximize the use of stack allocation.
-* Use fixed-size static byte buffers (`[u_int8; N]`) for data storage and queues.
-* Avoid any operations that trigger implicit heap allocations.
-
-### 4. Zero Tolerance for Kernel Panics & Triple Faults
+### 3. Zero Tolerance for Kernel Panics & Triple Faults
 A system crash is the worst possible outcome. Your code must be resilient and predictable.
 * **Never use unwrap() or expect()**: Always propagate errors gracefully using `Result` or `Option` types.
 * **Validate boundaries**: Check array indices and buffer capacities before accessing them.
 * **Handle all failures**: Anticipate edge cases, hardware limits, and corrupted inputs. If a failure occurs, return an error to let the caller handle it.
 
-### 5. Never Use Raw Integers (Strong Typing)
+### 4. Never Use Raw Integers (Strong Typing)
 To prevent mixing up semantic values (like memory addresses, process IDs, or hardware ports), raw integers are banned in public signatures.
 * Wrap raw primitive integers in domain-specific types or newtype structs.
 * **Example**:
