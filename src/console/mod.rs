@@ -29,9 +29,9 @@ struct KWriter {
     /// Raw framebuffer to draw into.
     fb: Framebuffer,
     /// Current cursor X position in pixels.
-    x: usize,
+    column: usize,
     /// Current cursor Y position in pixels.
-    y: usize,
+    row: usize,
     /// All lines that have been completed (ended with `\n`) since the last
     /// [`reset`]. Used for zoom redraw and command history recall.
     history: Vec<String>,
@@ -76,8 +76,8 @@ pub fn init(fb: &Framebuffer) {
     let fb = fb.clone();
     *KWRITER.lock() = Some(KWriter {
         fb,
-        x: 0,
-        y: 0,
+        column: 0,
+        row: 0,
         font_size: RasterHeight::Size16,
         current_line: String::new(),
         history: Vec::new(),
@@ -86,14 +86,22 @@ pub fn init(fb: &Framebuffer) {
 }
 
 impl KWriter {
+    fn x(&self) -> usize {
+        return self.column * font_w(self.font_size);
+    }
+
+    fn y(&self) -> usize {
+        return self.row * font_h(self.font_size);
+    }
+
     /// Scrolls the framebuffer up if the cursor has reached the scroll
     /// threshold (3 lines from the bottom). Adjusts `self.y` accordingly.
     fn check_scroll(&mut self, fh: usize) {
         let threshold = self.fb.height.saturating_sub(3 * fh);
-        if self.y >= threshold {
-            let scroll_by = self.y - threshold + fh;
+        if self.y() >= threshold {
+            let scroll_by = self.y() - threshold + fh;
             graphics::scroll_up(&self.fb, scroll_by);
-            self.y = threshold.saturating_sub(fh);
+            self.row = threshold.saturating_sub(fh) / fh;
         }
     }
 }
@@ -111,8 +119,8 @@ impl fmt::Write for KWriter {
             if ch == '\n' {
                 // flush current line into history and move cursor down
                 self.history.push(core::mem::take(&mut self.current_line));
-                self.x = 0;
-                self.y += fh;
+                self.column = 0;
+                self.row += 1;
                 self.check_scroll(fh);
                 continue;
             }
@@ -120,9 +128,9 @@ impl fmt::Write for KWriter {
             self.current_line.push(ch);
 
             // wrap to next line if we've reached the right edge
-            if self.x + fw >= width {
-                self.x = 0;
-                self.y += fh;
+            if self.column * fw >= width {
+                self.column = 0;
+                self.row += 1;
             }
 
             let mut buf = [0u8; 4];
@@ -130,11 +138,11 @@ impl fmt::Write for KWriter {
             graphics::draw_text(
                 &self.fb,
                 s,
-                (self.x, self.y),
+                (self.x(), self.y()),
                 color::WHITE,
                 Some(self.font_size),
             );
-            self.x += fw;
+            self.column += 1;
         }
 
         Ok(())
@@ -174,8 +182,8 @@ macro_rules! kprintln {
 pub(crate) fn reset() {
     if let Some(writer) = KWRITER.lock().as_mut() {
         graphics::clear_background(&writer.fb, &color::BLACK);
-        writer.x = 0;
-        writer.y = 0;
+        writer.column = 0;
+        writer.row = 0;
         writer.history.clear();
         writer.current_line.clear();
         writer.history_index = None;
@@ -189,15 +197,15 @@ pub(crate) fn backspace() {
         let fh = font_h(writer.font_size);
         let fw = font_w(writer.font_size);
 
-        if writer.x == 0 {
-            if writer.y == 0 {
+        if writer.x() == 0 {
+            if writer.y() == 0 {
                 return; // already at top-left, nothing to erase
             }
             // wrap back to end of previous line
-            writer.y -= fh;
-            writer.x = writer.fb.width - (writer.fb.width % fw) - fw;
+            writer.row -= 1;
+            writer.column = writer.fb.width / fw;
         } else {
-            writer.x -= fw;
+            writer.column -= 1;
         }
 
         // keep logical input in sync with erased glyph
@@ -208,7 +216,7 @@ pub(crate) fn backspace() {
         // paint over the erased character with background color
         crate::graphics::draw_rec(
             &writer.fb,
-            (writer.x, writer.y),
+            (writer.x(), writer.y()),
             (fw, fh),
             crate::color::BLACK,
         );
@@ -222,7 +230,7 @@ pub(crate) fn draw_cursor() {
         let fw = font_w(writer.font_size);
         crate::graphics::draw_rec(
             &writer.fb,
-            (writer.x, writer.y),
+            (writer.x(), writer.y()),
             (fw, fh - 4),
             crate::color::WHITE,
         );
@@ -237,7 +245,7 @@ pub(crate) fn erase_cursor() {
         let fw = font_w(writer.font_size);
         crate::graphics::draw_rec(
             &writer.fb,
-            (writer.x, writer.y),
+            (writer.x(), writer.y()),
             (fw, fh - 4),
             crate::color::BLACK,
         );
@@ -269,8 +277,8 @@ pub(crate) fn print_history() {
             y += fh;
         }
 
-        writer.x = 0;
-        writer.y = y;
+        writer.column = 0;
+        writer.row = y / fh;
     } else {
         kprintln!("Failed to print history");
     }
@@ -376,7 +384,7 @@ fn redraw_input_line(writer: &mut KWriter, text: &str) {
     // erase the entire current row
     graphics::draw_rec(
         &writer.fb,
-        (0, writer.y),
+        (0, writer.y()),
         (writer.fb.width, fh),
         color::BLACK,
     );
@@ -384,7 +392,7 @@ fn redraw_input_line(writer: &mut KWriter, text: &str) {
     graphics::draw_text(
         &writer.fb,
         PROMPT,
-        (0, writer.y),
+        (0, writer.y()),
         color::WHITE,
         Some(writer.font_size),
     );
@@ -392,7 +400,7 @@ fn redraw_input_line(writer: &mut KWriter, text: &str) {
     graphics::draw_text(
         &writer.fb,
         text,
-        (fw * PROMPT.chars().count(), writer.y),
+        (fw * PROMPT.chars().count(), writer.y()),
         color::WHITE,
         Some(writer.font_size),
     );
@@ -400,7 +408,7 @@ fn redraw_input_line(writer: &mut KWriter, text: &str) {
     writer.current_line.clear();
     writer.current_line.push_str(PROMPT);
     writer.current_line.push_str(text);
-    writer.x = fw * writer.current_line.chars().count();
+    writer.column = writer.current_line.chars().count();
 }
 
 /// Sets the font size directly without redrawing. Use [`zoom_in`]/[`zoom_out`]
