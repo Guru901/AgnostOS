@@ -19,6 +19,23 @@ pub(crate) enum Commands {
     UNKNOWN,
 }
 
+impl Commands {
+    fn text(&self) -> &str {
+        match self {
+            Commands::HELP => "help",
+            Commands::ABOUT => "about",
+            Commands::HISTORY => "history",
+            Commands::ECHO => "echo",
+            Commands::MEMINFO => "meminfo",
+            Commands::FONT => "font",
+            Commands::CLEAR => "clear",
+            Commands::SHUTDOWN => "shutdown",
+            Commands::EMPTY => "",
+            Commands::UNKNOWN => "unknown",
+        }
+    }
+}
+
 impl From<&str> for Commands {
     fn from(value: &str) -> Self {
         match value {
