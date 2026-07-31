@@ -297,40 +297,26 @@ pub fn scroll_up(fb: &Framebuffer, rows: usize) {
         return;
     }
     if rows >= fb.height {
-        clear_background(fb, &Color::new(0, 0, 0));
+        // SAFETY: `is_drawable` verifies the entire framebuffer span is valid.
+        unsafe {
+            core::ptr::write_bytes(fb.ptr, 0, fb.stride * fb.height * 4);
+        }
         return;
     }
     if rows == 0 {
         return;
     }
 
-    let bpp = 4usize; // validated above: RGB and BGR GOP modes are 32-bit
-    for row in rows..fb.height {
-        for col in 0..fb.width {
-            let src = (row * fb.stride + col) * bpp;
-            let dst = ((row - rows) * fb.stride + col) * bpp;
-            // SAFETY: source and destination offsets are derived from valid rows
-            // and columns, and each pixel occupies `bpp` bytes in the framebuffer.
-            unsafe {
-                for b in 0..bpp {
-                    let val = fb.ptr.add(src + b).read_volatile();
-                    fb.ptr.add(dst + b).write_volatile(val);
-                }
-            }
-        }
-    }
-    // clear the freed bottom strip
-    for row in (fb.height - rows)..fb.height {
-        for col in 0..fb.width {
-            let idx = (row * fb.stride + col) * bpp;
-            // SAFETY: these offsets address the valid bottom rows being cleared.
-            unsafe {
-                fb.ptr.add(idx).write_volatile(0);
-                fb.ptr.add(idx + 1).write_volatile(0);
-                fb.ptr.add(idx + 2).write_volatile(0);
-                fb.ptr.add(idx + 3).write_volatile(0);
-            }
-        }
+    let row_bytes = fb.stride * 4;
+    let moved_bytes = (fb.height - rows) * row_bytes;
+    let cleared_bytes = rows * row_bytes;
+
+    // SAFETY: `is_drawable` verifies the whole `stride * height * 4` byte
+    // region is valid. `copy` has memmove semantics, which safely handles the
+    // overlapping source and destination ranges.
+    unsafe {
+        core::ptr::copy(fb.ptr.add(rows * row_bytes), fb.ptr, moved_bytes);
+        core::ptr::write_bytes(fb.ptr.add(moved_bytes), 0, cleared_bytes);
     }
 }
 

@@ -48,3 +48,13 @@ fn scrolling_moves_pixels_up_and_clears_bottom_row() {
     let bottom_row = 2 * fb.stride * 4;
     assert_eq!(&bytes[bottom_row..bottom_row + 3], &[0, 0, 0]);
 }
+
+#[test]
+fn scrolling_past_the_framebuffer_clears_it() {
+    let mut bytes = vec![0xAA; 2 * 3 * 4];
+    let fb = framebuffer(&mut bytes, 2, 3);
+
+    graphics::scroll_up(&fb, 4);
+
+    assert!(bytes.iter().all(|&byte| byte == 0));
+}
