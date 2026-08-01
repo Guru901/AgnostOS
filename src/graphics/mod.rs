@@ -215,13 +215,25 @@ pub fn draw_circle(fb: &Framebuffer, radius: usize, (cx, cy): (usize, usize), co
     ) else {
         return;
     };
-    let radius_squared = radius * radius;
+    let Some(radius_squared) = radius.checked_mul(radius) else {
+        return;
+    };
 
     for delta_y in -radius..=radius {
         for delta_x in -radius..=radius {
-            if delta_x * delta_x + delta_y * delta_y <= radius_squared {
-                let pixel_x = center_x + delta_x;
-                let pixel_y = center_y + delta_y;
+            let Some(distance_squared) = delta_x
+                .checked_mul(delta_x)
+                .and_then(|x_squared| delta_y.checked_mul(delta_y)?.checked_add(x_squared))
+            else {
+                continue;
+            };
+
+            if distance_squared <= radius_squared {
+                let (Some(pixel_x), Some(pixel_y)) =
+                    (center_x.checked_add(delta_x), center_y.checked_add(delta_y))
+                else {
+                    continue;
+                };
 
                 if pixel_x >= 0 && pixel_y >= 0 && pixel_x < width && pixel_y < height {
                     let pixel_index = pixel_y.cast_unsigned() * fb.stride + pixel_x.cast_unsigned();
