@@ -199,11 +199,11 @@ unsafe impl GlobalAlloc for AgnostOSAllocator {
             let mut head = self.head.lock();
 
             // Write a FreeChunk header directly into the freed memory.
-            debug_assert!(ptr.is_aligned());
             // `alloc` guarantees this pointer uses at least `FreeChunk` alignment;
             // `ptr` is erased to `u8` by the `GlobalAlloc` trait signature.
             #[allow(clippy::cast_ptr_alignment)]
             let chunk = ptr.cast::<FreeChunk>();
+            debug_assert!(chunk.is_aligned());
             (*chunk).size = size;
 
             // Insert at head of free list.
