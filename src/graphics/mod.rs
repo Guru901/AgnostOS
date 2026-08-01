@@ -27,6 +27,12 @@ pub enum FramebufferError {
 }
 
 impl Framebuffer {
+    /// Creates a framebuffer wrapper around the current GOP mode.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the GOP pixel format is unsupported, its geometry
+    /// overflows, or the backing framebuffer is smaller than its geometry requires.
     pub fn new(gop: &mut GraphicsOutput) -> Result<Self, FramebufferError> {
         let mode_info = gop.current_mode_info();
         let (width, height) = mode_info.resolution();
@@ -59,6 +65,7 @@ impl Framebuffer {
     }
 
     #[doc(hidden)]
+    #[must_use]
     pub fn for_doc_test() -> Self {
         const WIDTH: usize = 300;
         const HEIGHT: usize = 300;
@@ -88,6 +95,7 @@ impl Framebuffer {
 
     /// Returns whether this framebuffer is suitable for direct 32-bit drawing.
     /// Drawing functions treat an invalid framebuffer as a no-op.
+    #[must_use]
     pub fn is_drawable(&self) -> bool {
         !self.ptr.is_null()
             && matches!(self.pixel_format, PixelFormat::Rgb | PixelFormat::Bgr)
@@ -141,13 +149,20 @@ pub fn clear_background(fb: &Framebuffer, color: &Color) {
         for col in 0..fb.width {
             let pixel_index = row * fb.stride + col;
             // SAFETY: `row` and `col` are bounded by the framebuffer dimensions.
-            unsafe { fb.write_pixel(pixel_index, &color) };
+            unsafe { fb.write_pixel(pixel_index, color) };
         }
     }
 }
 
 /// Renders a rectangle on the screen, at the provided coordinates with the provided color and
 /// dimensions.
+///
+/// # Panics
+///
+/// Panics when a non-overflowing rectangle extends past the framebuffer's
+/// right or bottom edge.
+///
+/// Returns without drawing when an extent calculation overflows.
 ///
 /// **Example**
 ///
@@ -194,20 +209,38 @@ pub fn draw_circle(fb: &Framebuffer, radius: usize, (cx, cy): (usize, usize), co
         return;
     }
 
-    let r = radius as isize;
-    let cx = cx as isize;
-    let cy = cy as isize;
-    let r_sq = r * r;
+    let (Ok(radius), Ok(center_x), Ok(center_y), Ok(width), Ok(height)) = (
+        isize::try_from(radius),
+        isize::try_from(cx),
+        isize::try_from(cy),
+        isize::try_from(fb.width),
+        isize::try_from(fb.height),
+    ) else {
+        return;
+    };
+    let Some(radius_squared) = radius.checked_mul(radius) else {
+        return;
+    };
 
-    for dy in -r..=r {
-        for dx in -r..=r {
-            if dx * dx + dy * dy <= r_sq {
-                let px = cx + dx;
-                let py = cy + dy;
+    for delta_y in -radius..=radius {
+        for delta_x in -radius..=radius {
+            let Some(distance_squared) = delta_x
+                .checked_mul(delta_x)
+                .and_then(|x_squared| delta_y.checked_mul(delta_y)?.checked_add(x_squared))
+            else {
+                continue;
+            };
 
-                if px >= 0 && py >= 0 && px < fb.width as isize && py < fb.height as isize {
-                    let pixel_index = py as usize * fb.stride + px as usize;
-                    // SAFETY: the preceding bounds check keeps `(px, py)` in the framebuffer.
+            if distance_squared <= radius_squared {
+                let (Some(pixel_x), Some(pixel_y)) =
+                    (center_x.checked_add(delta_x), center_y.checked_add(delta_y))
+                else {
+                    continue;
+                };
+
+                if pixel_x >= 0 && pixel_y >= 0 && pixel_x < width && pixel_y < height {
+                    let pixel_index = pixel_y.cast_unsigned() * fb.stride + pixel_x.cast_unsigned();
+                    // SAFETY: the preceding bounds check keeps the pixel in the framebuffer.
                     unsafe {
                         fb.write_pixel(pixel_index, &color);
                     }
@@ -232,17 +265,23 @@ pub fn draw_line(fb: &Framebuffer, (x1, y1): (i64, i64), (x2, y2): (i64, i64), c
         return;
     }
 
-    let dx = (x2 - x1).abs();
-    let dy = (y2 - y1).abs();
+    let (Ok(width), Ok(height)) = (i64::try_from(fb.width), i64::try_from(fb.height)) else {
+        return;
+    };
+    let delta_x = (x2 - x1).abs();
+    let delta_y = (y2 - y1).abs();
     let sx = if x2 >= x1 { 1 } else { -1 };
     let sy = if y2 >= y1 { 1 } else { -1 };
-    let mut err = dx - dy;
+    let mut err = delta_x - delta_y;
 
     let (mut x, mut y) = (x1, y1);
 
     loop {
-        if x >= 0 && y >= 0 && x < fb.width as i64 && y < fb.height as i64 {
-            let pixel_index = y as usize * fb.stride + x as usize;
+        if x >= 0 && y >= 0 && x < width && y < height {
+            let (Ok(row), Ok(column)) = (usize::try_from(y), usize::try_from(x)) else {
+                continue;
+            };
+            let pixel_index = row * fb.stride + column;
             // SAFETY: the bounds check above keeps `(x, y)` in the framebuffer.
             unsafe {
                 fb.write_pixel(pixel_index, &color);
@@ -255,13 +294,13 @@ pub fn draw_line(fb: &Framebuffer, (x1, y1): (i64, i64), (x2, y2): (i64, i64), c
 
         let e2 = 2 * err;
 
-        if e2 > -dy {
-            err -= dy;
+        if e2 > -delta_y {
+            err -= delta_y;
             x += sx;
         }
 
-        if e2 < dx {
-            err += dx;
+        if e2 < delta_x {
+            err += delta_x;
             y += sy;
         }
     }
@@ -273,40 +312,26 @@ pub fn scroll_up(fb: &Framebuffer, rows: usize) {
         return;
     }
     if rows >= fb.height {
-        clear_background(fb, &Color::new(0, 0, 0));
+        // SAFETY: `is_drawable` verifies the entire framebuffer span is valid.
+        unsafe {
+            core::ptr::write_bytes(fb.ptr, 0, fb.stride * fb.height * 4);
+        }
         return;
     }
     if rows == 0 {
         return;
     }
 
-    let bpp = 4usize; // validated above: RGB and BGR GOP modes are 32-bit
-    for row in rows..fb.height {
-        for col in 0..fb.width {
-            let src = (row * fb.stride + col) * bpp;
-            let dst = ((row - rows) * fb.stride + col) * bpp;
-            // SAFETY: source and destination offsets are derived from valid rows
-            // and columns, and each pixel occupies `bpp` bytes in the framebuffer.
-            unsafe {
-                for b in 0..bpp {
-                    let val = fb.ptr.add(src + b).read_volatile();
-                    fb.ptr.add(dst + b).write_volatile(val);
-                }
-            }
-        }
-    }
-    // clear the freed bottom strip
-    for row in (fb.height - rows)..fb.height {
-        for col in 0..fb.width {
-            let idx = (row * fb.stride + col) * bpp;
-            // SAFETY: these offsets address the valid bottom rows being cleared.
-            unsafe {
-                fb.ptr.add(idx).write_volatile(0);
-                fb.ptr.add(idx + 1).write_volatile(0);
-                fb.ptr.add(idx + 2).write_volatile(0);
-                fb.ptr.add(idx + 3).write_volatile(0);
-            }
-        }
+    let row_bytes = fb.stride * 4;
+    let moved_bytes = (fb.height - rows) * row_bytes;
+    let cleared_bytes = rows * row_bytes;
+
+    // SAFETY: `is_drawable` verifies the whole `stride * height * 4` byte
+    // region is valid. `copy` has memmove semantics, which safely handles the
+    // overlapping source and destination ranges.
+    unsafe {
+        core::ptr::copy(fb.ptr.add(rows * row_bytes), fb.ptr, moved_bytes);
+        core::ptr::write_bytes(fb.ptr.add(moved_bytes), 0, cleared_bytes);
     }
 }
 
@@ -347,7 +372,7 @@ pub fn draw_text(
             },
         };
 
-        draw_glyph(fb, &char_raster, cursor_x, y, &color);
+        draw_glyph(fb, &char_raster, cursor_x, y, color);
         let Some(next_cursor_x) = cursor_x.checked_add(char_raster.width()) else {
             return;
         };
@@ -355,34 +380,45 @@ pub fn draw_text(
     }
 }
 
-fn draw_glyph(fb: &Framebuffer, raster: &RasterizedChar, x: usize, y: usize, color: &Color) {
+fn draw_glyph(
+    fb: &Framebuffer,
+    raster: &RasterizedChar,
+    origin_x: usize,
+    origin_y: usize,
+    color: Color,
+) {
     for (row, row_data) in raster.raster().iter().enumerate() {
         for (col, &intensity) in row_data.iter().enumerate() {
             if intensity == 0 {
                 continue; // fully transparent, skip
             }
 
-            let Some(px) = x.checked_add(col) else {
+            let Some(pixel_x) = origin_x.checked_add(col) else {
                 continue;
             };
-            let Some(py) = y.checked_add(row) else {
+            let Some(pixel_y) = origin_y.checked_add(row) else {
                 continue;
             };
 
-            if px >= fb.width || py >= fb.height {
+            if pixel_x >= fb.width || pixel_y >= fb.height {
                 continue;
             }
 
             // blend intensity with color
-            let r = (color.r as u32 * intensity as u32 / 255) as u8;
-            let g = (color.g as u32 * intensity as u32 / 255) as u8;
-            let b = (color.b as u32 * intensity as u32 / 255) as u8;
+            let red = blend_channel(color.r, intensity);
+            let green = blend_channel(color.g, intensity);
+            let blue = blend_channel(color.b, intensity);
 
-            let pixel_index = py * fb.stride + px;
+            let pixel_index = pixel_y * fb.stride + pixel_x;
             // SAFETY: out-of-bounds glyph pixels are skipped immediately above.
-            unsafe { fb.write_pixel(pixel_index, &Color::new(r, g, b)) };
+            unsafe { fb.write_pixel(pixel_index, &Color::new(red, green, blue)) };
         }
     }
+}
+
+fn blend_channel(channel: u8, intensity: u8) -> u8 {
+    let blended = u16::from(channel) * u16::from(intensity) / 255;
+    u8::try_from(blended).unwrap_or(u8::MAX)
 }
 
 #[cfg(test)]

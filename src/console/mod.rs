@@ -99,11 +99,11 @@ pub fn init(fb: &Framebuffer) {
 
 impl KWriter {
     fn x(&self) -> usize {
-        return self.column * font_w(self.font_size);
+        self.column * font_w(self.font_size)
     }
 
     fn y(&self) -> usize {
-        return self.row * font_h(self.font_size);
+        self.row * font_h(self.font_size)
     }
 
     /// Scrolls the framebuffer up if the cursor has reached the scroll
