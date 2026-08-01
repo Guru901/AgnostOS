@@ -159,7 +159,10 @@ pub fn clear_background(fb: &Framebuffer, color: &Color) {
 ///
 /// # Panics
 ///
-/// Panics when the rectangle extends past the framebuffer's right or bottom edge.
+/// Panics when a non-overflowing rectangle extends past the framebuffer's
+/// right or bottom edge.
+///
+/// Returns without drawing when an extent calculation overflows.
 ///
 /// **Example**
 ///
