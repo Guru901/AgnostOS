@@ -1,13 +1,61 @@
-use core::alloc::GlobalAlloc;
-use core::alloc::Layout;
+#[cfg(feature = "custom-allocator")]
+use core::alloc::{GlobalAlloc, Layout};
 use core::sync::atomic::Ordering;
 use uefi::boot;
 use uefi::boot::MemoryType;
 use uefi::mem::memory_map::MemoryMap;
 
-use crate::BOOT_SERVICES_EXITED;
-use crate::{HEAP_SIZE, HEAP_START};
+use crate::{BOOT_SERVICES_EXITED, HEAP_SIZE, HEAP_START};
 
+/// Exits UEFI boot services and returns the largest conventional-memory range
+/// for use as the kernel heap.
+///
+/// # Safety
+/// This may only be called once, after all UEFI boot services have been used.
+/// The returned range is available for exclusive use by the allocator.
+pub fn initialize_heap() -> (*mut u8, usize) {
+    assert!(
+        HEAP_SIZE.load(Ordering::Relaxed) == 0,
+        "Allocator already initialised"
+    );
+
+    // Exit boot services — after this point, no UEFI boot service calls are valid.
+    // SAFETY: initialization is one-shot and the caller has finished using
+    // UEFI services, satisfying `exit_boot_services`' transition requirements.
+    let memory_map = unsafe { boot::exit_boot_services(Some(MemoryType::LOADER_DATA)) };
+    BOOT_SERVICES_EXITED.store(true, Ordering::Release);
+
+    // Find the largest contiguous conventional (free) memory region.
+    let mut heap_start = 0usize;
+    let mut heap_size = 0usize;
+    for descriptor in memory_map.entries() {
+        if descriptor.ty == MemoryType::CONVENTIONAL {
+            let Ok(page_count) = usize::try_from(descriptor.page_count) else {
+                continue;
+            };
+            let Some(size) = page_count.checked_mul(4096) else {
+                continue;
+            };
+            let Ok(start) = usize::try_from(descriptor.phys_start) else {
+                continue;
+            };
+            if size > heap_size {
+                heap_start = start;
+                heap_size = size;
+            }
+        }
+    }
+
+    assert!(heap_size != 0, "Failed to initialise heap");
+
+    // Store heap info globally so commands like `meminfo` can read them.
+    HEAP_START.store(heap_start, Ordering::Relaxed);
+    HEAP_SIZE.store(heap_size, Ordering::Relaxed);
+
+    (heap_start as *mut u8, heap_size)
+}
+
+#[cfg(feature = "custom-allocator")]
 /// A free memory chunk header stored at the start of each free region.
 /// The chunk uses the free memory itself to store bookkeeping data —
 /// no separate allocation is needed.
@@ -18,6 +66,7 @@ struct FreeChunk {
     next: *mut FreeChunk,
 }
 
+#[cfg(feature = "custom-allocator")]
 /// A linked-list based heap allocator for the `AgnostOS` kernel.
 ///
 /// Free memory regions are tracked as a singly-linked list of [`FreeChunk`]s.
@@ -36,15 +85,19 @@ pub struct AgnostOSAllocator {
 // SAFETY: We are single-core — there is no actual concurrent access.
 // These impls exist only to satisfy Rust's type system requirements for
 // a static global allocator.
+#[cfg(feature = "custom-allocator")]
 unsafe impl Send for AgnostOSAllocator {}
+#[cfg(feature = "custom-allocator")]
 unsafe impl Sync for AgnostOSAllocator {}
 
+#[cfg(feature = "custom-allocator")]
 impl Default for AgnostOSAllocator {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg(feature = "custom-allocator")]
 impl AgnostOSAllocator {
     /// Creates a new, uninitialized allocator.
     ///
@@ -56,8 +109,7 @@ impl AgnostOSAllocator {
         }
     }
 
-    /// Exits UEFI boot services, finds the largest conventional memory region,
-    /// and initializes the allocator's free list with it.
+    /// Initializes the allocator's free list with the supplied heap range.
     ///
     /// # Panics
     /// Will effectively hang/crash if no conventional memory is found,
@@ -65,43 +117,8 @@ impl AgnostOSAllocator {
     /// returns null.
     ///
     /// # Safety
-    /// Must be called exactly once, after all UEFI services are done being used
-    /// (GOP framebuffer pointer must already be saved before calling this).
-    /// After this call, all UEFI boot services are unavailable.
-    pub fn init(&self) {
-        assert!(
-            HEAP_SIZE.load(Ordering::Relaxed) == 0,
-            "Allocator already initialised"
-        );
-
-        // Exit boot services — after this point, no UEFI boot service calls are valid.
-        // SAFETY: initialization is one-shot and the caller has finished using
-        // UEFI services, satisfying `exit_boot_services`' transition requirements.
-        let memory_map = unsafe { boot::exit_boot_services(Some(MemoryType::LOADER_DATA)) };
-        BOOT_SERVICES_EXITED.store(true, Ordering::Release);
-
-        // Find the largest contiguous conventional (free) memory region.
-        let mut heap_start = 0usize;
-        let mut heap_size = 0usize;
-        for descriptor in memory_map.entries() {
-            if descriptor.ty == MemoryType::CONVENTIONAL {
-                let Ok(page_count) = usize::try_from(descriptor.page_count) else {
-                    continue;
-                };
-                let Some(size) = page_count.checked_mul(4096) else {
-                    continue;
-                };
-                let Ok(start) = usize::try_from(descriptor.phys_start) else {
-                    continue;
-                };
-                if size > heap_size {
-                    heap_start = start;
-                    heap_size = size;
-                }
-            }
-        }
-
-        assert!(heap_size != 0, "Failed to initialise heap");
+    /// The heap must be exclusively owned by this allocator.
+    pub fn init(&self, heap_start: usize, heap_size: usize) {
         assert!(
             heap_size >= core::mem::size_of::<FreeChunk>(),
             "Heap is too small"
@@ -110,10 +127,6 @@ impl AgnostOSAllocator {
             heap_start.is_multiple_of(core::mem::size_of::<FreeChunk>()),
             "Heap is misaligned"
         );
-
-        // Store heap info globally so commands like `meminfo` can read them.
-        HEAP_START.store(heap_start, Ordering::Relaxed);
-        HEAP_SIZE.store(heap_size, Ordering::Relaxed);
 
         // Write the initial FreeChunk header at the start of the heap region,
         // covering the entire heap as one large free chunk.
@@ -128,6 +141,7 @@ impl AgnostOSAllocator {
     }
 }
 
+#[cfg(feature = "custom-allocator")]
 unsafe impl GlobalAlloc for AgnostOSAllocator {
     /// Allocates a memory region satisfying `layout`.
     ///

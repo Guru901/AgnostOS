@@ -4,14 +4,24 @@
 extern crate alloc;
 
 use agnostos::{
-    BOOT_SERVICES_EXITED, allocator::AgnostOSAllocator, console, graphics::Framebuffer, kprintln,
-    shell, uefi_graphics,
+    BOOT_SERVICES_EXITED, allocator, console, graphics::Framebuffer, kprintln, shell, uefi_graphics,
 };
+
+#[cfg(feature = "custom-allocator")]
+use agnostos::allocator::AgnostOSAllocator;
+
+#[cfg(not(feature = "custom-allocator"))]
+use linked_list_allocator::LockedHeap;
 
 use uefi::prelude::*;
 
+#[cfg(feature = "custom-allocator")]
 #[global_allocator]
 pub static ALLOCATOR: AgnostOSAllocator = AgnostOSAllocator::new();
+
+#[cfg(not(feature = "custom-allocator"))]
+#[global_allocator]
+pub static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 #[entry]
 fn main() -> Status {
@@ -29,7 +39,17 @@ fn main() -> Status {
     console::init(&fb);
     uefi::println!("Exiting boot services in 1 seconds...");
 
-    ALLOCATOR.init();
+    let (heap_start, heap_size) = allocator::initialize_heap();
+
+    #[cfg(feature = "custom-allocator")]
+    ALLOCATOR.init(heap_start, heap_size);
+
+    #[cfg(not(feature = "custom-allocator"))]
+    // SAFETY: `initialize_heap` returns the exclusively owned conventional-memory
+    // region after boot services have exited, and this is the allocator's one-time init.
+    unsafe {
+        ALLOCATOR.lock().init(heap_start, heap_size);
+    }
     shell::init(&fb)
 }
 
