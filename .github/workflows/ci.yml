@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    container:
+      image: archlinux:latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm \
+            rustup \
+            qemu-desktop \
+            edk2-ovmf \
+            coreutils \
+            base-devel
+
+      - name: Setup Rust
+        run: |
+          rustup default stable
+          rustup target add x86_64-unknown-uefi
+
+      - name: Build
+        run: |
+          cargo build --release -j4 --target x86_64-unknown-uefi --features uefi-bin
+
+      - name: Prepare EFI image
+        run: |
+          mkdir -p esp/EFI/BOOT
+          cp target/x86_64-unknown-uefi/release/agnostos.efi esp/EFI/BOOT/BOOTX64.EFI
+
+      - name: Boot in QEMU
+        run: |
+          timeout 5s \
+            qemu-system-x86_64 \
+            -machine q35 \
+            -nographic \
+            -bios /usr/share/edk2/x64/OVMF.4m.fd \
+            -drive format=raw,file=fat:rw:esp || test $? -eq 124
