@@ -10,7 +10,10 @@ test = false
 required-features = ["uefi-bin"]
 
 [features]
+default = ["linked-list-allocator"]
 uefi-bin = []
+linked-list-allocator = ["dep:linked_list_allocator"]
+custom-allocator = []
 
 [dependencies]
 noto-sans-mono-bitmap = { version = "0.3", features = ["size_16", "size_20", "size_24", "size_32", "regular"] }
@@ -18,6 +21,7 @@ pc-keyboard = "0.9.0"
 spin = "0.12.0"
 uefi = "0.37.0"
 x86_64 = { version = "0.15.5", default-features = false, features = ["instructions"] }
+linked_list_allocator = { version = "0.10.5", default-features = false, features = ["use_spin"], optional = true }
 
 [profile.release]
 panic = "abort"
