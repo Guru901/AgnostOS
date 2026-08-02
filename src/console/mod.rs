@@ -314,6 +314,8 @@ pub(crate) fn zoom_in(current_input: &str) {
             RasterHeight::Size24 | RasterHeight::Size32 => RasterHeight::Size32, // already at max
         };
         graphics::clear_background(&writer.fb, &color::BLACK);
+        // I dont know how this is working..
+        writer.current_line = String::from("");
     }
     print_history();
     kprint!("{PROMPT}{current_input}");
@@ -328,6 +330,8 @@ pub(crate) fn zoom_out(current_input: &str) {
             RasterHeight::Size20 | RasterHeight::Size16 => RasterHeight::Size16, // already at min
         };
         graphics::clear_background(&writer.fb, &color::BLACK);
+        // I dont know how this is working..
+        writer.current_line = String::from("");
     }
     print_history();
     kprint!("{PROMPT}{current_input}");
