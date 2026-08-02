@@ -4,7 +4,8 @@
 extern crate alloc;
 
 use agnostos::{
-    BOOT_SERVICES_EXITED, allocator, console, graphics::Framebuffer, kprintln, shell, uefi_graphics,
+    BOOT_SERVICES_EXITED, allocator, console, graphics::Framebuffer, idt, kprintln, shell,
+    uefi_graphics,
 };
 
 #[cfg(feature = "custom-allocator")]
@@ -50,6 +51,10 @@ fn main() -> Status {
     unsafe {
         ALLOCATOR.lock().init(heap_start, heap_size);
     }
+
+    idt::init();
+    x86_64::instructions::interrupts::enable();
+
     shell::init(&fb)
 }
 

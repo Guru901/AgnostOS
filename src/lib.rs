@@ -1,4 +1,5 @@
 #![no_std]
+#![feature(abi_x86_interrupt)]
 extern crate alloc;
 
 /// Module that contains the code for our custom allocator.
@@ -6,6 +7,9 @@ pub mod allocator;
 
 pub mod constants;
 pub use constants::*;
+
+/// Module that contains the code for interrupts
+pub mod idt;
 
 /// Module that contains the code for rendering things to the screen after exiting uefi boot
 /// services. It usses framebuffer to write the bytes directly
