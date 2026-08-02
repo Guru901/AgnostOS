@@ -13,6 +13,11 @@ use crate::{BOOT_SERVICES_EXITED, HEAP_SIZE, HEAP_START};
 /// # Safety
 /// This may only be called once, after all UEFI boot services have been used.
 /// The returned range is available for exclusive use by the allocator.
+///
+/// # Panics
+///
+/// 1. Will panic if the heap has already been initialised.
+/// 2. Will panic if the heap initialised with zero size.
 pub fn initialize_heap() -> (*mut u8, usize) {
     assert!(
         HEAP_SIZE.load(Ordering::Relaxed) == 0,

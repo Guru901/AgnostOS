@@ -315,7 +315,7 @@ pub(crate) fn zoom_in(current_input: &str) {
         };
         graphics::clear_background(&writer.fb, &color::BLACK);
         // I dont know how this is working..
-        writer.current_line = String::from("");
+        writer.current_line = String::new();
     }
     print_history();
     kprint!("{PROMPT}{current_input}");
@@ -331,7 +331,7 @@ pub(crate) fn zoom_out(current_input: &str) {
         };
         graphics::clear_background(&writer.fb, &color::BLACK);
         // I dont know how this is working..
-        writer.current_line = String::from("");
+        writer.current_line = String::new();
     }
     print_history();
     kprint!("{PROMPT}{current_input}");
