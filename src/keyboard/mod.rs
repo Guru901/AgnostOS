@@ -64,7 +64,10 @@ pub enum KeyboardEvent {
 }
 
 pub fn poll() -> Option<KeyboardEvent> {
-    let scancode = KEYBOARD_QUEUE.lock().pop()?;
+    // An IRQ can preempt this code. Disable interrupts while holding the queue
+    // lock so the handler never spins waiting for the interrupted code to unlock it.
+    let scancode =
+        x86_64::instructions::interrupts::without_interrupts(|| KEYBOARD_QUEUE.lock().pop())?;
 
     let mut kb = KEYBOARD.lock();
 
