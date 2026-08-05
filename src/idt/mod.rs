@@ -57,7 +57,8 @@ const CMD_WRITE_TO_AUX: u8 = 0xd4; // "next byte on 0x60 goes to the mouse, not 
 const MOUSE_ENABLE_PACKETS: u8 = 0xf4;
 const MOUSE_ACK: u8 = 0xfa;
 
-/// Maps hardware IRQs away from CPU exception vectors and enables only IRQ1.
+/// Maps hardware IRQs away from CPU exception vectors and unmasks IRQ1
+/// (keyboard), IRQ2 (slave cascade), and IRQ12 (PS/2 mouse).
 ///
 /// All other IRQs remain masked because this kernel has no handlers for them.
 unsafe fn initialize_pic() {
