@@ -42,18 +42,6 @@ pub fn init(fb: &Framebuffer) -> ! {
             mouse_x = (mouse_x + event.dx as i32).clamp(0, fb.width as i32 - 1);
             mouse_y = (mouse_y + event.dy as i32).clamp(0, fb.height as i32 - 1);
             mouse::draw_mouse_cursor(fb, mouse_x as usize, mouse_y as usize);
-
-            if event.left {
-                kprintln!("left clicked");
-            }
-
-            if event.right {
-                kprintln!("right clicked");
-            }
-
-            if event.middle {
-                kprintln!("middle clicked");
-            }
         }
         if let Some(key) = keyboard::poll() {
             console::erase_cursor();
