@@ -51,6 +51,7 @@ static KEYBOARD: Mutex<PS2Keyboard<layouts::Us104Key, ScancodeSet1>> =
         HandleControl::Ignore,
     ));
 
+// Okay because our program is single threaded right now but later have to think about it.
 static CTRL_HELD: Mutex<bool> = Mutex::new(false);
 
 pub enum KeyboardEvent {
