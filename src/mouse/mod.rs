@@ -1,5 +1,6 @@
 use crate::{
-    color,
+    TextGrid,
+    color::{self, Color},
     graphics::{self, Framebuffer},
     idt::{PS2_COMMAND, PS2_DATA, PS2_STATUS, inb, outb},
     kprintln,
@@ -11,15 +12,48 @@ const MOUSE_CURSOR_SIZE: (usize, usize) = (5, 5);
 /// Last drawn mouse cursor position, so erase_mouse_cursor knows what to
 /// paint over. None until the first draw.
 static LAST_MOUSE_POS: Mutex<Option<(usize, usize)>> = Mutex::new(None);
+static SAVED_UNDER: Mutex<[Color; 20 * 20]> = Mutex::new([color::WHITE; 20 * 20]);
 
 pub fn draw_mouse_cursor(fb: &Framebuffer, x: usize, y: usize) {
-    graphics::draw_rec(fb, (x, y), MOUSE_CURSOR_SIZE, color::WHITE);
-    *LAST_MOUSE_POS.lock() = Some((x, y));
+    if x <= fb.width || y <= fb.height {
+        let mut saved = SAVED_UNDER.lock();
+
+        for row in 0..20 {
+            for col in 0..20 {
+                saved[row * 20 + col] = unsafe { fb.read_pixel(x + col, y + row) };
+            }
+        }
+
+        *LAST_MOUSE_POS.lock() = Some((x, y));
+        graphics::draw_rec(fb, (x, y), MOUSE_CURSOR_SIZE, color::WHITE);
+    }
 }
 
-pub fn erase_mouse_cursor(fb: &Framebuffer) {
+pub fn erase_mouse_cursor(fb: &Framebuffer, grid: &TextGrid, char_w: usize, char_h: usize) {
     if let Some((x, y)) = LAST_MOUSE_POS.lock().take() {
-        graphics::draw_rec(fb, (x, y), MOUSE_CURSOR_SIZE, color::BLACK);
+        let start_col = x / char_w;
+        let start_row = y / char_h;
+        let end_col = (x + MOUSE_CURSOR_SIZE.0).div_ceil(char_w);
+        let end_row = (y + MOUSE_CURSOR_SIZE.1).div_ceil(char_h);
+
+        for row in start_row..end_row.min(grid.rows) {
+            for col in start_col..end_col.min(grid.cols) {
+                if let Some(cell) = grid.get(col, row) {
+                    let cell_x = col * char_w;
+                    let cell_y = row * char_h;
+                    // black out just this cell first, then redraw the real char
+                    graphics::draw_rec(fb, (cell_x, cell_y), (char_w, char_h), color::BLACK);
+                    let mut buf = [0u8; 4];
+                    graphics::draw_text(
+                        fb,
+                        cell.ch.encode_utf8(&mut buf),
+                        (cell_x, cell_y),
+                        cell.color,
+                        None,
+                    );
+                }
+            }
+        }
     }
 }
 
@@ -152,8 +186,4 @@ pub(crate) unsafe fn ps2_read_data() -> u8 {
         wait_read_ready();
         return inb(PS2_DATA);
     }
-}
-
-pub fn handle_mouse_byte(byte: u8) {
-    kprintln!("{byte}");
 }

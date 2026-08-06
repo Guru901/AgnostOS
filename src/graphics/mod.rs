@@ -4,7 +4,10 @@ use alloc::vec;
 use noto_sans_mono_bitmap::{RasterHeight, RasterizedChar, get_raster};
 use uefi::proto::console::gop::{GraphicsOutput, PixelFormat};
 
-use crate::{FONT_HEIGHT, FONT_WEIGHT, color::Color};
+use crate::{
+    FONT_HEIGHT, FONT_WEIGHT,
+    color::{self, Color},
+};
 
 #[derive(Debug, Clone)]
 pub struct Framebuffer {
@@ -104,7 +107,28 @@ impl Framebuffer {
     }
 
     #[inline]
-    unsafe fn write_pixel(&self, pixel_index: usize, color: &Color) -> bool {
+    pub(crate) unsafe fn read_pixel(&self, x: usize, y: usize) -> Color {
+        if x >= self.width || y >= self.height {
+            return color::BLACK;
+        }
+
+        let offset = (self.stride * y) + x;
+        let p = unsafe { self.ptr.add(offset) };
+        let mut rgb: [u8; 3] = [0; 3];
+
+        unsafe {
+            rgb[0] = p.read();
+            rgb[1] = p.add(1).read();
+            rgb[2] = p.add(2).read();
+        }
+
+        let color = color::Color::from(rgb);
+
+        return color;
+    }
+
+    #[inline]
+    pub(crate) unsafe fn write_pixel(&self, pixel_index: usize, color: &Color) -> bool {
         let rgb = match self.pixel_format {
             PixelFormat::Bgr => [color.b, color.g, color.r],
             PixelFormat::Rgb => [color.r, color.g, color.b],
