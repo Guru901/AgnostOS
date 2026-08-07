@@ -14,7 +14,9 @@ static LAST_MOUSE_POS: Mutex<Option<(usize, usize)>> = Mutex::new(None);
 static SAVED_UNDER: Mutex<[Color; 20 * 20]> = Mutex::new([color::WHITE; 20 * 20]);
 
 pub fn draw_mouse_cursor(fb: &Framebuffer, x: usize, y: usize) {
-    if x <= fb.width || y <= fb.height {
+    if x.saturating_add(CURSOR_W) <= fb.width
+        && y.saturating_add(CURSOR_H) <= fb.height
+    {
         let mut saved = SAVED_UNDER.lock();
 
         for row in 0..CURSOR_H {
