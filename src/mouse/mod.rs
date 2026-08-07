@@ -1,9 +1,8 @@
 use crate::{
-    TextGrid,
+    CURSOR_H, CURSOR_W,
     color::{self, Color},
     graphics::{self, Framebuffer},
     idt::{PS2_COMMAND, PS2_DATA, PS2_STATUS, inb, outb},
-    kprintln,
 };
 use spin::Mutex;
 
@@ -18,8 +17,8 @@ pub fn draw_mouse_cursor(fb: &Framebuffer, x: usize, y: usize) {
     if x <= fb.width || y <= fb.height {
         let mut saved = SAVED_UNDER.lock();
 
-        for row in 0..20 {
-            for col in 0..20 {
+        for row in 0..CURSOR_H {
+            for col in 0..CURSOR_W {
                 saved[row * 20 + col] = unsafe { fb.read_pixel(x + col, y + row) };
             }
         }
@@ -29,29 +28,15 @@ pub fn draw_mouse_cursor(fb: &Framebuffer, x: usize, y: usize) {
     }
 }
 
-pub fn erase_mouse_cursor(fb: &Framebuffer, grid: &TextGrid, char_w: usize, char_h: usize) {
+pub fn erase_mouse_cursor(fb: &Framebuffer) {
     if let Some((x, y)) = LAST_MOUSE_POS.lock().take() {
-        let start_col = x / char_w;
-        let start_row = y / char_h;
-        let end_col = (x + MOUSE_CURSOR_SIZE.0).div_ceil(char_w);
-        let end_row = (y + MOUSE_CURSOR_SIZE.1).div_ceil(char_h);
-
-        for row in start_row..end_row.min(grid.rows) {
-            for col in start_col..end_col.min(grid.cols) {
-                if let Some(cell) = grid.get(col, row) {
-                    let cell_x = col * char_w;
-                    let cell_y = row * char_h;
-                    // black out just this cell first, then redraw the real char
-                    graphics::draw_rec(fb, (cell_x, cell_y), (char_w, char_h), color::BLACK);
-                    let mut buf = [0u8; 4];
-                    graphics::draw_text(
-                        fb,
-                        cell.ch.encode_utf8(&mut buf),
-                        (cell_x, cell_y),
-                        cell.color,
-                        None,
-                    );
-                }
+        let saved = SAVED_UNDER.lock();
+        for row in 0..CURSOR_H {
+            for col in 0..CURSOR_W {
+                graphics::draw_rec(fb, (x, y), (CURSOR_W, CURSOR_H), color::BLACK);
+                unsafe {
+                    fb.write_pixel((y + row) * fb.stride + (x + col), &saved[row * 20 + col])
+                };
             }
         }
     }

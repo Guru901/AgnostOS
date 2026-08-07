@@ -7,7 +7,7 @@
 use alloc::string::String;
 
 use crate::{
-    PROMPT, color,
+    CURSOR_H, CURSOR_W, PROMPT, color,
     commands::run_command,
     console,
     graphics::{self, Framebuffer},
@@ -38,9 +38,9 @@ pub fn init(fb: &Framebuffer) -> ! {
 
     loop {
         if let Some(event) = mouse::poll() {
-            mouse::erase_mouse_cursor(fb, &grid, CHAR_W, CHAR_H);
-            mouse_x = (mouse_x + event.dx as i32).clamp(0, fb.width as i32 - CURSOR_W);
-            mouse_y = (mouse_y + event.dy as i32).clamp(0, fb.height as i32 - CURSOR_H);
+            mouse::erase_mouse_cursor(fb);
+            mouse_x = (mouse_x + event.dx as i32).clamp(0, fb.width as i32 - CURSOR_W as i32);
+            mouse_y = (mouse_y + event.dy as i32).clamp(0, fb.height as i32 - CURSOR_H as i32);
             mouse::draw_mouse_cursor(fb, mouse_x as usize, mouse_y as usize);
         }
         if let Some(key) = keyboard::poll() {

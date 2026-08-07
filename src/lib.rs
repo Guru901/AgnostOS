@@ -33,32 +33,3 @@ pub mod mouse;
 pub mod shell;
 
 pub mod commands;
-
-use alloc::string::String;
-use alloc::vec::Vec;
-
-use crate::color::Color;
-
-pub struct ScreenCell {
-    pub ch: char,
-    pub color: Color,
-}
-
-pub struct TextGrid {
-    cols: usize,
-    rows: usize,
-    cells: Vec<ScreenCell>,
-}
-
-impl TextGrid {
-    pub fn get(&self, col: usize, row: usize) -> Option<&ScreenCell> {
-        self.cells.get(row * self.cols + col)
-    }
-
-    pub fn set(&mut self, col: usize, row: usize, ch: char, color: Color) {
-        if let Some(cell) = self.cells.get_mut(row * self.cols + col) {
-            cell.ch = ch;
-            cell.color = color;
-        }
-    }
-}
