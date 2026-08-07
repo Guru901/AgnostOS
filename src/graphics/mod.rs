@@ -4,7 +4,10 @@ use alloc::vec;
 use noto_sans_mono_bitmap::{RasterHeight, RasterizedChar, get_raster};
 use uefi::proto::console::gop::{GraphicsOutput, PixelFormat};
 
-use crate::{FONT_HEIGHT, FONT_WEIGHT, color::Color};
+use crate::{
+    FONT_HEIGHT, FONT_WEIGHT,
+    color::{self, Color},
+};
 
 #[derive(Debug, Clone)]
 pub struct Framebuffer {
@@ -104,7 +107,38 @@ impl Framebuffer {
     }
 
     #[inline]
-    unsafe fn write_pixel(&self, pixel_index: usize, color: &Color) -> bool {
+    pub(crate) unsafe fn read_pixel(&self, x: usize, y: usize) -> Color {
+        if x >= self.width || y >= self.height {
+            return color::BLACK;
+        }
+
+        let Some(pixel_index) = self
+            .stride
+            .checked_mul(y)
+            .and_then(|row| row.checked_add(x))
+        else {
+            return color::BLACK;
+        };
+        let Some(offset) = pixel_index.checked_mul(4) else {
+            return color::BLACK;
+        };
+        if self.ptr.is_null()
+            || offset.checked_add(4).is_none_or(|end| end > self.byte_len)
+        {
+            return color::BLACK;
+        }
+        let p = unsafe { self.ptr.add(offset) };
+        let raw = unsafe { [p.read(), p.add(1).read(), p.add(2).read()] };
+        let rgb = match self.pixel_format {
+            PixelFormat::Bgr => [raw[2], raw[1], raw[0]],
+            PixelFormat::Rgb => raw,
+            _ => return color::BLACK,
+        };
+        Color::from(rgb)
+    }
+
+    #[inline]
+    pub(crate) unsafe fn write_pixel(&self, pixel_index: usize, color: &Color) -> bool {
         let rgb = match self.pixel_format {
             PixelFormat::Bgr => [color.b, color.g, color.r],
             PixelFormat::Rgb => [color.r, color.g, color.b],

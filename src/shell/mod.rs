@@ -7,12 +7,12 @@
 use alloc::string::String;
 
 use crate::{
-    PROMPT, color,
+    CURSOR_H, CURSOR_W, PROMPT, color,
     commands::run_command,
     console,
     graphics::{self, Framebuffer},
     keyboard::{self, KeyboardEvent},
-    kprint, kprintln,
+    kprint, kprintln, mouse,
 };
 
 /// Initializes and runs the interactive shell. Never returns (`-> !`).
@@ -30,11 +30,19 @@ use crate::{
 pub fn init(fb: &Framebuffer) -> ! {
     graphics::clear_background(fb, &color::BLACK);
     let mut line = String::new();
+    let mut mouse_x: i32 = 0;
+    let mut mouse_y: i32 = 0;
 
     kprint!("{PROMPT}");
     console::draw_cursor();
 
     loop {
+        if let Some(event) = mouse::poll() {
+            mouse::erase_mouse_cursor(fb);
+            mouse_x = (mouse_x + event.dx as i32).clamp(0, fb.width as i32 - CURSOR_W as i32);
+            mouse_y = (mouse_y + event.dy as i32).clamp(0, fb.height as i32 - CURSOR_H as i32);
+            mouse::draw_mouse_cursor(fb, mouse_x as usize, mouse_y as usize);
+        }
         if let Some(key) = keyboard::poll() {
             console::erase_cursor();
 
