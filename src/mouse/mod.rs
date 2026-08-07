@@ -122,6 +122,9 @@ pub fn poll() -> Option<MouseEvent> {
 
     state.index = 0;
     let flags = state.bytes[0];
+    if flags & 0b1100_0000 != 0 {
+        return None;
+    }
     let mut dx = state.bytes[1] as i16;
     let mut dy = state.bytes[2] as i16;
 
