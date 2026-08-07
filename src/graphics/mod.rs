@@ -112,19 +112,29 @@ impl Framebuffer {
             return color::BLACK;
         }
 
-        let offset = (self.stride * y) + x;
-        let p = unsafe { self.ptr.add(offset) };
-        let mut rgb: [u8; 3] = [0; 3];
-
-        unsafe {
-            rgb[0] = p.read();
-            rgb[1] = p.add(1).read();
-            rgb[2] = p.add(2).read();
+        let Some(pixel_index) = self
+            .stride
+            .checked_mul(y)
+            .and_then(|row| row.checked_add(x))
+        else {
+            return color::BLACK;
+        };
+        let Some(offset) = pixel_index.checked_mul(4) else {
+            return color::BLACK;
+        };
+        if self.ptr.is_null()
+            || offset.checked_add(4).is_none_or(|end| end > self.byte_len)
+        {
+            return color::BLACK;
         }
-
-        let color = color::Color::from(rgb);
-
-        return color;
+        let p = unsafe { self.ptr.add(offset) };
+        let raw = unsafe { [p.read(), p.add(1).read(), p.add(2).read()] };
+        let rgb = match self.pixel_format {
+            PixelFormat::Bgr => [raw[2], raw[1], raw[0]],
+            PixelFormat::Rgb => raw,
+            _ => return color::BLACK,
+        };
+        Color::from(rgb)
     }
 
     #[inline]
