@@ -9,14 +9,14 @@ use crate::{FONT_HEIGHT, FONT_WEIGHT, color::Color};
 #[derive(Debug, Clone)]
 pub struct Framebuffer {
     ptr: *mut u8,
-    pub width: usize,
-    pub height: usize,
-    pub stride: usize,
+    pub(crate) width: usize,
+    pub(crate) height: usize,
+    stride: usize,
     /// Pixel layout selected by GOP. Direct rendering supports only `Rgb` and
     /// `Bgr`, both of which are 32-bit formats.
-    pub pixel_format: PixelFormat,
+    pixel_format: PixelFormat,
     /// Number of bytes reported by GOP for the framebuffer mapping.
-    pub byte_len: usize,
+    byte_len: usize,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
