@@ -49,7 +49,7 @@ fn main() -> Status {
     // SAFETY: `initialize_heap` returns the exclusively owned conventional-memory
     // region after boot services have exited, and this is the allocator's one-time init.
     unsafe {
-        ALLOCATOR.lock().init(heap_start, heap_size);
+        ALLOCATOR.lock().init(heap_start as *mut u8, heap_size);
     }
 
     idt::init();

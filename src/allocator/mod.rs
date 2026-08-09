@@ -18,7 +18,7 @@ use crate::{BOOT_SERVICES_EXITED, HEAP_SIZE, HEAP_START};
 ///
 /// 1. Will panic if the heap has already been initialised.
 /// 2. Will panic if the heap initialised with zero size.
-pub fn initialize_heap() -> (*mut u8, usize) {
+pub fn initialize_heap() -> (usize, usize) {
     assert!(
         HEAP_SIZE.load(Ordering::Relaxed) == 0,
         "Allocator already initialised"
@@ -57,7 +57,7 @@ pub fn initialize_heap() -> (*mut u8, usize) {
     HEAP_START.store(heap_start, Ordering::Relaxed);
     HEAP_SIZE.store(heap_size, Ordering::Relaxed);
 
-    (heap_start as *mut u8, heap_size)
+    (heap_start, heap_size)
 }
 
 #[cfg(feature = "custom-allocator")]
