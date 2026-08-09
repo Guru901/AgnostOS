@@ -86,6 +86,6 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     }
 
     loop {
-        core::hint::spin_loop();
+        x86_64::instructions::hlt();
     }
 }
