@@ -4,14 +4,11 @@ use alloc::vec;
 use noto_sans_mono_bitmap::{RasterHeight, RasterizedChar, get_raster};
 use uefi::proto::console::gop::{GraphicsOutput, PixelFormat};
 
-use crate::{
-    FONT_HEIGHT, FONT_WEIGHT,
-    color::{self, Color},
-};
+use crate::{FONT_HEIGHT, FONT_WEIGHT, color::Color};
 
 #[derive(Debug, Clone)]
 pub struct Framebuffer {
-    pub ptr: *mut u8,
+    ptr: *mut u8,
     pub width: usize,
     pub height: usize,
     pub stride: usize,
@@ -107,7 +104,9 @@ impl Framebuffer {
     }
 
     #[inline]
+    #[cfg(feature = "mouse")]
     pub(crate) unsafe fn read_pixel(&self, x: usize, y: usize) -> Color {
+        use crate::color;
         if !self.is_drawable() || x >= self.width || y >= self.height {
             return color::BLACK;
         }
