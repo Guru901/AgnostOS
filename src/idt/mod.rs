@@ -4,14 +4,12 @@ use x86_64::{
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame},
 };
 
-use crate::{
-    keyboard::KEYBOARD_QUEUE,
-    mouse::{MOUSE_QUEUE, ps2_write_data},
-};
-use crate::{
-    kprintln,
-    mouse::{ps2_read_data, ps2_write_command},
-};
+use crate::keyboard::KEYBOARD_QUEUE;
+use crate::kprintln;
+#[cfg(feature = "mouse")]
+use crate::mouse::{MOUSE_QUEUE, ps2_write_data};
+#[cfg(feature = "mouse")]
+use crate::mouse::{ps2_read_data, ps2_write_command};
 
 static IDT: Once<InterruptDescriptorTable> = Once::new();
 static PIC_INITIALIZED: Once<()> = Once::new();
@@ -26,6 +24,7 @@ pub fn init() {
 
             // IRQ1 after PIC remapping.
             idt[KEYBOARD_INTERRUPT_VECTOR].set_handler_fn(keyboard_interrupt_handler);
+            #[cfg(feature = "mouse")]
             idt[MOUSE_INTERRUPT_VECTOR].set_handler_fn(mouse_interrupt_handler);
 
             idt
@@ -35,7 +34,10 @@ pub fn init() {
         PIC_INITIALIZED.call_once(|| {
             // SAFETY: interrupts are disabled while the legacy PIC is reprogrammed.
             unsafe { initialize_pic() };
-            unsafe { initialize_mouse() };
+            #[cfg(feature = "mouse")]
+            unsafe {
+                initialize_mouse()
+            };
         });
     });
 }
@@ -47,26 +49,40 @@ const PIC2_COMMAND: u16 = 0xa0;
 const PIC2_DATA: u16 = 0xa1;
 const PIC2_OFFSET: u8 = 40;
 const KEYBOARD_INTERRUPT_VECTOR: u8 = PIC1_OFFSET + 1;
+#[cfg(feature = "mouse")]
 const MOUSE_INTERRUPT_VECTOR: u8 = PIC2_OFFSET + 4;
+#[cfg(feature = "mouse")]
 // Controller commands
 const CMD_ENABLE_AUX: u8 = 0xa8; // enable the second PS/2 port (mouse)
+#[cfg(feature = "mouse")]
 const CMD_READ_CONFIG: u8 = 0x20;
+#[cfg(feature = "mouse")]
 const CMD_WRITE_CONFIG: u8 = 0x60;
+#[cfg(feature = "mouse")]
 const CMD_WRITE_TO_AUX: u8 = 0xd4; // "next byte on 0x60 goes to the mouse, not keyboard"
 
+#[cfg(feature = "mouse")]
 const MOUSE_ENABLE_PACKETS: u8 = 0xf4;
+#[cfg(feature = "mouse")]
 const MOUSE_ACK: u8 = 0xfa;
 
 /// Maps hardware IRQs away from CPU exception vectors and unmasks IRQ1
-/// (keyboard), IRQ2 (slave cascade), and IRQ12 (PS/2 mouse).
+/// (keyboard). With the `mouse` feature, it also unmasks IRQ2 (slave cascade)
+/// and IRQ12 (PS/2 mouse).
 ///
 /// All other IRQs remain masked because this kernel has no handlers for them.
 unsafe fn initialize_pic() {
     const ICW1_INIT: u8 = 0x10;
     const ICW1_ICW4: u8 = 0x01;
     const ICW4_8086: u8 = 0x01;
-    const MASTER_KEYBOARD_MOUSE: u8 = 0b1111_1001; // IRQ1 (keyboard) + IRQ2 (cascade) unmasked
-    const SLAVE_MOUSE_ONLY: u8 = 0b1110_1111; // IRQ12 (bit 4 of slave) unmasked
+    #[cfg(feature = "mouse")]
+    const MASTER_IRQ_MASK: u8 = 0b1111_1001; // IRQ1 (keyboard) + IRQ2 (cascade) unmasked
+    #[cfg(not(feature = "mouse"))]
+    const MASTER_IRQ_MASK: u8 = 0b1111_1101; // IRQ1 (keyboard) unmasked
+    #[cfg(feature = "mouse")]
+    const SLAVE_IRQ_MASK: u8 = 0b1110_1111; // IRQ12 (bit 4 of slave) unmasked
+    #[cfg(not(feature = "mouse"))]
+    const SLAVE_IRQ_MASK: u8 = 0b1111_1111; // all slave IRQs masked
 
     // Start initialization in cascade mode.
     unsafe {
@@ -85,11 +101,12 @@ unsafe fn initialize_pic() {
         outb(ICW4_8086, PIC1_DATA);
         outb(ICW4_8086, PIC2_DATA);
 
-        outb(MASTER_KEYBOARD_MOUSE, PIC1_DATA);
-        outb(SLAVE_MOUSE_ONLY, PIC2_DATA);
+        outb(MASTER_IRQ_MASK, PIC1_DATA);
+        outb(SLAVE_IRQ_MASK, PIC2_DATA);
     }
 }
 
+#[cfg(feature = "mouse")]
 unsafe fn initialize_mouse() {
     unsafe {
         // 1. Tell the controller to enable the auxiliary (mouse) port.
@@ -154,6 +171,7 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
     }
 }
 
+#[cfg(feature = "mouse")]
 extern "x86-interrupt" fn mouse_interrupt_handler(_stack_frame: InterruptStackFrame) {
     let byte = unsafe { inb(PS2_DATA) };
 
