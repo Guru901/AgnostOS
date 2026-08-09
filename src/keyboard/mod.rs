@@ -9,6 +9,12 @@ pub struct KeyboardQueue {
     tail: usize,
 }
 
+impl Default for KeyboardQueue {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub static KEYBOARD_QUEUE: Mutex<KeyboardQueue> = Mutex::new(KeyboardQueue::new());
 
 impl KeyboardQueue {
@@ -104,5 +110,5 @@ pub fn poll() -> Option<KeyboardEvent> {
         return Some(KeyboardEvent::Char(c));
     }
 
-    return None;
+    None
 }
