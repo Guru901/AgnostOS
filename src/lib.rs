@@ -27,6 +27,7 @@ pub mod color;
 /// Module that contains the code for handling keyboard.
 pub mod keyboard;
 
+#[cfg(feature = "mouse")]
 pub mod mouse;
 
 /// Module that contains the code for shell.
