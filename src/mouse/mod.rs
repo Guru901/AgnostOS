@@ -5,7 +5,7 @@ use crate::{
 };
 use spin::Mutex;
 
-const MOUSE_CURSOR_SIZE: (usize, usize) = (5, 5);
+pub(crate) const MOUSE_CURSOR_SIZE: (usize, usize) = (5, 5);
 const MOUSE_CURSOR_PIXELS: usize = MOUSE_CURSOR_SIZE.0 * MOUSE_CURSOR_SIZE.1;
 
 /// The framebuffer pixels beneath the current mouse cursor.  Keeping the
@@ -141,11 +141,11 @@ static PACKET_STATE: Mutex<PacketState> = Mutex::new(PacketState {
 
 #[derive(Debug, Clone, Copy)]
 pub struct MouseEvent {
-    pub dx: i16,
-    pub dy: i16,
-    pub left: bool,
-    pub right: bool,
-    pub middle: bool,
+    pub(crate) dx: i16,
+    pub(crate) dy: i16,
+    left: bool,
+    right: bool,
+    middle: bool,
 }
 
 pub fn poll() -> Option<MouseEvent> {

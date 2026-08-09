@@ -43,26 +43,11 @@ pub fn init(fb: &Framebuffer) -> ! {
     loop {
         #[cfg(feature = "mouse")]
         {
-            let mut mouse_moved = false;
-            mouse::drain(|event| {
-                mouse_moved = true;
-                // Keep applying the complete batch before redrawing.  This avoids
-                // rendering stale queued deltas one at a time after direction has
-                // already changed.
-                mouse_x = mouse_x.saturating_add(event.dx as i32).clamp(
-                    0,
-                    fb.width.saturating_sub(mouse::MOUSE_CURSOR_SIZE.0) as i32,
-                );
-                mouse_y = mouse_y.saturating_add(event.dy as i32).clamp(
-                    0,
-                    fb.height.saturating_sub(mouse::MOUSE_CURSOR_SIZE.1) as i32,
-                );
-            });
-            if mouse_moved {
+            if let Some(event) = mouse::poll() {
+                use crate::{CURSOR_H, CURSOR_W};
                 mouse::erase_mouse_cursor(fb);
-                // Clamp using the actual pointer dimensions. CURSOR_W/H describe
-                // the text cursor and left an invisible 15-pixel dead zone at the
-                // right and bottom edges for this 5x5 mouse cursor.
+                mouse_x = (mouse_x + event.dx as i32).clamp(0, fb.width as i32 - CURSOR_W as i32);
+                mouse_y = (mouse_y + event.dy as i32).clamp(0, fb.height as i32 - CURSOR_H as i32);
                 mouse::draw_mouse_cursor(fb, mouse_x as usize, mouse_y as usize);
             }
         }

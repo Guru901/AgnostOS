@@ -11,7 +11,7 @@ pub struct Framebuffer {
     ptr: *mut u8,
     pub(crate) width: usize,
     pub(crate) height: usize,
-    stride: usize,
+    pub(crate) stride: usize,
     /// Pixel layout selected by GOP. Direct rendering supports only `Rgb` and
     /// `Bgr`, both of which are 32-bit formats.
     pixel_format: PixelFormat,
