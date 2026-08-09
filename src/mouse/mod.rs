@@ -1,5 +1,4 @@
 use crate::{
-    CURSOR_H, CURSOR_W,
     color::{self, Color},
     graphics::{self, Framebuffer},
     idt::{PS2_COMMAND, PS2_DATA, PS2_STATUS, inb, outb},
@@ -7,38 +6,89 @@ use crate::{
 use spin::Mutex;
 
 const MOUSE_CURSOR_SIZE: (usize, usize) = (5, 5);
+const MOUSE_CURSOR_PIXELS: usize = MOUSE_CURSOR_SIZE.0 * MOUSE_CURSOR_SIZE.1;
 
-/// Last drawn mouse cursor position, so erase_mouse_cursor knows what to
-/// paint over. None until the first draw.
-static LAST_MOUSE_POS: Mutex<Option<(usize, usize)>> = Mutex::new(None);
-static SAVED_UNDER: Mutex<[Color; 20 * 20]> = Mutex::new([color::WHITE; 20 * 20]);
+/// The framebuffer pixels beneath the current mouse cursor.  Keeping the
+/// position and pixels together prevents restoring a buffer from a different
+/// cursor position.
+struct MouseCursor {
+    position: Option<(usize, usize)>,
+    saved_under: [Color; MOUSE_CURSOR_PIXELS],
+}
+
+static MOUSE_CURSOR: Mutex<MouseCursor> = Mutex::new(MouseCursor {
+    position: None,
+    saved_under: [color::BLACK; MOUSE_CURSOR_PIXELS],
+});
 
 pub fn draw_mouse_cursor(fb: &Framebuffer, x: usize, y: usize) {
-    if x <= fb.width || y <= fb.height {
-        let mut saved = SAVED_UNDER.lock();
-
-        for row in 0..CURSOR_H {
-            for col in 0..CURSOR_W {
-                saved[row * 20 + col] = unsafe { fb.read_pixel(x + col, y + row) };
-            }
-        }
-
-        *LAST_MOUSE_POS.lock() = Some((x, y));
-        graphics::draw_rec(fb, (x, y), MOUSE_CURSOR_SIZE, color::WHITE);
+    let Some(right) = x.checked_add(MOUSE_CURSOR_SIZE.0) else {
+        return;
+    };
+    let Some(bottom) = y.checked_add(MOUSE_CURSOR_SIZE.1) else {
+        return;
+    };
+    if !fb.is_drawable() || right > fb.width || bottom > fb.height {
+        return;
     }
+
+    let mut cursor = MOUSE_CURSOR.lock();
+
+    for row in 0..MOUSE_CURSOR_SIZE.1 {
+        for col in 0..MOUSE_CURSOR_SIZE.0 {
+            cursor.saved_under[row * MOUSE_CURSOR_SIZE.0 + col] =
+                unsafe { fb.read_pixel(x + col, y + row) };
+        }
+    }
+
+    cursor.position = Some((x, y));
+    graphics::draw_rec(fb, (x, y), MOUSE_CURSOR_SIZE, color::WHITE);
 }
 
 pub fn erase_mouse_cursor(fb: &Framebuffer) {
-    if let Some((x, y)) = LAST_MOUSE_POS.lock().take() {
-        let saved = SAVED_UNDER.lock();
-        for row in 0..CURSOR_H {
-            for col in 0..CURSOR_W {
-                graphics::draw_rec(fb, (x, y), (CURSOR_W, CURSOR_H), color::BLACK);
+    let mut cursor = MOUSE_CURSOR.lock();
+    if let Some((x, y)) = cursor.position.take() {
+        for row in 0..MOUSE_CURSOR_SIZE.1 {
+            for col in 0..MOUSE_CURSOR_SIZE.0 {
                 unsafe {
-                    fb.write_pixel((y + row) * fb.stride + (x + col), &saved[row * 20 + col])
+                    fb.write_pixel(
+                        (y + row) * fb.stride + (x + col),
+                        &cursor.saved_under[row * MOUSE_CURSOR_SIZE.0 + col],
+                    )
                 };
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use alloc::vec;
+
+    use super::*;
+    use uefi::proto::console::gop::PixelFormat;
+
+    #[test]
+    fn erasing_cursor_restores_the_pixels_it_covered() {
+        let mut bytes = vec![0_u8; 7 * 7 * 4];
+        for (index, byte) in bytes.iter_mut().enumerate() {
+            *byte = index as u8;
+        }
+        let original = bytes.clone();
+        let fb = Framebuffer {
+            ptr: bytes.as_mut_ptr(),
+            width: 7,
+            height: 7,
+            stride: 7,
+            pixel_format: PixelFormat::Rgb,
+            byte_len: bytes.len(),
+        };
+
+        erase_mouse_cursor(&fb);
+        draw_mouse_cursor(&fb, 1, 1);
+        erase_mouse_cursor(&fb);
+
+        assert_eq!(bytes, original);
     }
 }
 

@@ -108,23 +108,37 @@ impl Framebuffer {
 
     #[inline]
     pub(crate) unsafe fn read_pixel(&self, x: usize, y: usize) -> Color {
-        if x >= self.width || y >= self.height {
+        if !self.is_drawable() || x >= self.width || y >= self.height {
             return color::BLACK;
         }
 
-        let offset = (self.stride * y) + x;
-        let p = unsafe { self.ptr.add(offset) };
-        let mut rgb: [u8; 3] = [0; 3];
-
-        unsafe {
-            rgb[0] = p.read();
-            rgb[1] = p.add(1).read();
-            rgb[2] = p.add(2).read();
+        let Some(pixel_index) = y
+            .checked_mul(self.stride)
+            .and_then(|row| row.checked_add(x))
+        else {
+            return color::BLACK;
+        };
+        let Some(offset) = pixel_index.checked_mul(4) else {
+            return color::BLACK;
+        };
+        if offset.checked_add(4).is_none_or(|end| end > self.byte_len) {
+            return color::BLACK;
         }
 
-        let color = color::Color::from(rgb);
+        let p = unsafe { self.ptr.add(offset) };
+        let (first, second, third) = unsafe {
+            (
+                p.read_volatile(),
+                p.add(1).read_volatile(),
+                p.add(2).read_volatile(),
+            )
+        };
 
-        return color;
+        match self.pixel_format {
+            PixelFormat::Rgb => Color::new(first, second, third),
+            PixelFormat::Bgr => Color::new(third, second, first),
+            _ => color::BLACK,
+        }
     }
 
     #[inline]
