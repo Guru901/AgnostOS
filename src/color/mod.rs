@@ -4,11 +4,11 @@
 #[derive(Clone, Copy)]
 pub struct Color {
     /// Red component (`0..=255`).
-    pub r: u8,
+    pub(crate) r: u8,
     /// Green component (`0..=255`).
-    pub g: u8,
+    pub(crate) g: u8,
     /// Blue component (`0..=255`).
-    pub b: u8,
+    pub(crate) b: u8,
 }
 
 impl From<[u8; 3]> for Color {
