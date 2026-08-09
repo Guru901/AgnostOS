@@ -51,6 +51,8 @@ static KEYBOARD: Mutex<PS2Keyboard<layouts::Us104Key, ScancodeSet1>> =
         HandleControl::Ignore,
     ));
 
+// Only `poll` touches this; no interrupt handler does, so no interrupt-safe
+// access is needed. Revisit if a handler ever reads or writes it.
 static CTRL_HELD: Mutex<bool> = Mutex::new(false);
 
 pub enum KeyboardEvent {
