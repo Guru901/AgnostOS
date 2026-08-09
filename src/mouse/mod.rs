@@ -222,6 +222,6 @@ pub(crate) unsafe fn ps2_write_data(data: u8) {
 pub(crate) unsafe fn ps2_read_data() -> u8 {
     unsafe {
         wait_read_ready();
-        return inb(PS2_DATA);
+        inb(PS2_DATA)
     }
 }
