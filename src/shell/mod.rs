@@ -6,13 +6,15 @@
 
 use alloc::string::String;
 
+#[cfg(feature = "mouse")]
+use crate::mouse;
 use crate::{
-    CURSOR_H, CURSOR_W, PROMPT, color,
+    PROMPT, color,
     commands::run_command,
     console,
     graphics::{self, Framebuffer},
     keyboard::{self, KeyboardEvent},
-    kprint, kprintln, mouse,
+    kprint, kprintln,
 };
 
 /// Initializes and runs the interactive shell. Never returns (`-> !`).
@@ -30,18 +32,39 @@ use crate::{
 pub fn init(fb: &Framebuffer) -> ! {
     graphics::clear_background(fb, &color::BLACK);
     let mut line = String::new();
+    #[cfg(feature = "mouse")]
     let mut mouse_x: i32 = 0;
+    #[cfg(feature = "mouse")]
     let mut mouse_y: i32 = 0;
 
     kprint!("{PROMPT}");
     console::draw_cursor();
 
     loop {
-        if let Some(event) = mouse::poll() {
-            mouse::erase_mouse_cursor(fb);
-            mouse_x = (mouse_x + event.dx as i32).clamp(0, fb.width as i32 - CURSOR_W as i32);
-            mouse_y = (mouse_y + event.dy as i32).clamp(0, fb.height as i32 - CURSOR_H as i32);
-            mouse::draw_mouse_cursor(fb, mouse_x as usize, mouse_y as usize);
+        #[cfg(feature = "mouse")]
+        {
+            let mut mouse_moved = false;
+            mouse::drain(|event| {
+                mouse_moved = true;
+                // Keep applying the complete batch before redrawing.  This avoids
+                // rendering stale queued deltas one at a time after direction has
+                // already changed.
+                mouse_x = mouse_x.saturating_add(event.dx as i32).clamp(
+                    0,
+                    fb.width.saturating_sub(mouse::MOUSE_CURSOR_SIZE.0) as i32,
+                );
+                mouse_y = mouse_y.saturating_add(event.dy as i32).clamp(
+                    0,
+                    fb.height.saturating_sub(mouse::MOUSE_CURSOR_SIZE.1) as i32,
+                );
+            });
+            if mouse_moved {
+                mouse::erase_mouse_cursor(fb);
+                // Clamp using the actual pointer dimensions. CURSOR_W/H describe
+                // the text cursor and left an invisible 15-pixel dead zone at the
+                // right and bottom edges for this 5x5 mouse cursor.
+                mouse::draw_mouse_cursor(fb, mouse_x as usize, mouse_y as usize);
+            }
         }
         if let Some(key) = keyboard::poll() {
             console::erase_cursor();
