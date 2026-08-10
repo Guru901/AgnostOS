@@ -64,8 +64,7 @@ fn main() -> Status {
     shell::init()
 }
 
-fn fatal_after_boot(message: &str, detail: impl core::fmt::Debug) -> ! {
-    kprintln!("FATAL: {message}: {detail:?}");
+fn fatal_after_boot(_message: &str, _detail: impl core::fmt::Debug) -> ! {
     loop {
         x86_64::instructions::hlt();
     }
