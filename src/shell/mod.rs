@@ -9,13 +9,15 @@ use alloc::string::String;
 #[cfg(feature = "mouse")]
 use crate::mouse;
 use crate::{
-    PROMPT, color,
+    PROMPT,
     commands::run_command,
     console,
-    graphics::{self, Framebuffer},
     keyboard::{self, KeyboardEvent},
     kprint, kprintln,
 };
+
+#[cfg(feature = "mouse")]
+use crate::graphics::PixelCoord;
 
 /// Initializes and runs the interactive shell. Never returns (`-> !`).
 ///
@@ -29,8 +31,8 @@ use crate::{
 /// - Ctrl+L clears the screen.
 /// - Arrow up/down navigate command history.
 /// - Ctrl+Plus/Minus zoom the font in/out.
-pub fn init(fb: &Framebuffer) -> ! {
-    graphics::clear_background(fb, &color::BLACK);
+pub fn init() -> ! {
+    console::clear_background();
     let mut line = String::new();
     #[cfg(feature = "mouse")]
     let mut mouse_x: i32 = 0;
@@ -43,27 +45,19 @@ pub fn init(fb: &Framebuffer) -> ! {
     loop {
         #[cfg(feature = "mouse")]
         {
-            let mut mouse_moved = false;
-            mouse::drain(|event| {
-                mouse_moved = true;
-                // Keep applying the complete batch before redrawing.  This avoids
-                // rendering stale queued deltas one at a time after direction has
-                // already changed.
-                mouse_x = mouse_x.saturating_add(event.dx as i32).clamp(
-                    0,
-                    fb.width.saturating_sub(mouse::MOUSE_CURSOR_SIZE.0) as i32,
-                );
-                mouse_y = mouse_y.saturating_add(event.dy as i32).clamp(
-                    0,
-                    fb.height.saturating_sub(mouse::MOUSE_CURSOR_SIZE.1) as i32,
-                );
-            });
-            if mouse_moved {
-                mouse::erase_mouse_cursor(fb);
-                // Clamp using the actual pointer dimensions. CURSOR_W/H describe
-                // the text cursor and left an invisible 15-pixel dead zone at the
-                // right and bottom edges for this 5x5 mouse cursor.
-                mouse::draw_mouse_cursor(fb, mouse_x as usize, mouse_y as usize);
+            if let Some(event) = mouse::poll() {
+                use crate::{CURSOR_H, CURSOR_W};
+                console::with_framebuffer(|fb| {
+                    mouse::erase_mouse_cursor(fb);
+                    mouse_x = (mouse_x + event.dx.get() as i32)
+                        .clamp(0, fb.width() as i32 - CURSOR_W as i32);
+                    mouse_y = (mouse_y + event.dy.get() as i32)
+                        .clamp(0, fb.height() as i32 - CURSOR_H as i32);
+                    mouse::draw_mouse_cursor(
+                        fb,
+                        PixelCoord::new(mouse_x as usize, mouse_y as usize),
+                    );
+                });
             }
         }
         if let Some(key) = keyboard::poll() {

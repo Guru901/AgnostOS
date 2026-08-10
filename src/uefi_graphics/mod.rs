@@ -1,4 +1,5 @@
 use uefi::{
+    Status,
     boot::{self, OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol},
     proto::console::gop::GraphicsOutput,
 };
@@ -6,15 +7,8 @@ use uefi::{
 /// Initializes the UEFI Graphics Output Protocol using the largest available
 /// display mode up to 1920×1080.
 ///
-/// # Panics
-///
-/// Panics if the Graphics Output Protocol is unavailable or cannot be opened,
-/// no compatible graphics mode is available, or the selected mode cannot be
-/// activated.
-#[must_use]
-pub fn init_gop() -> ScopedProtocol<GraphicsOutput> {
-    let gop_handle = boot::get_handle_for_protocol::<GraphicsOutput>()
-        .expect("missing graphics output protocol");
+pub fn init_gop() -> uefi::Result<ScopedProtocol<GraphicsOutput>> {
+    let gop_handle = boot::get_handle_for_protocol::<GraphicsOutput>()?;
 
     // SAFETY: `gop_handle` was obtained for `GraphicsOutput`, and this image is
     // the active UEFI agent. `GetProtocol` only borrows the protocol while the
@@ -27,8 +21,7 @@ pub fn init_gop() -> ScopedProtocol<GraphicsOutput> {
                 controller: None,
             },
             OpenProtocolAttributes::GetProtocol,
-        )
-        .expect("failed to open Graphics Output Protocol")
+        )?
     };
 
     let mode = gop
@@ -41,8 +34,8 @@ pub fn init_gop() -> ScopedProtocol<GraphicsOutput> {
             let (w, h) = mode.info().resolution();
             w * h
         })
-        .expect("no graphics modes available");
+        .ok_or(Status::UNSUPPORTED)?;
 
-    gop.set_mode(&mode).expect("failed to set GOP mode");
-    gop // return owned, not a reference
+    gop.set_mode(&mode)?;
+    Ok(gop)
 }

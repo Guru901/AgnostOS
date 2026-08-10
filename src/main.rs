@@ -4,7 +4,7 @@
 extern crate alloc;
 
 use agnostos::{
-    BOOT_SERVICES_EXITED, allocator, console, graphics::Framebuffer, idt, kprintln, shell,
+    allocator, boot_services_exited, console, graphics::Framebuffer, idt, kprintln, shell,
     uefi_graphics,
 };
 
@@ -26,9 +26,14 @@ pub static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 #[entry]
 fn main() -> Status {
-    uefi::helpers::init().unwrap();
+    if let Err(error) = uefi::helpers::init() {
+        return error.status();
+    }
 
-    let mut gop = uefi_graphics::init_gop();
+    let mut gop = match uefi_graphics::init_gop() {
+        Ok(gop) => gop,
+        Err(error) => return error.status(),
+    };
     let fb = match Framebuffer::new(&mut gop) {
         Ok(fb) => fb,
         Err(error) => {
@@ -37,30 +42,37 @@ fn main() -> Status {
         }
     };
 
-    console::init(&fb);
+    console::init(fb);
     uefi::println!("Exiting boot services in 1 seconds...");
 
-    let (heap_start, heap_size) = allocator::initialize_heap();
+    let heap_region = match allocator::initialize_heap() {
+        Ok(region) => region,
+        Err(error) => fatal_after_boot("heap initialization failed", error),
+    };
 
     #[cfg(feature = "custom-allocator")]
-    ALLOCATOR.init(heap_start, heap_size);
+    if let Err(error) = ALLOCATOR.init(heap_region) {
+        fatal_after_boot("custom allocator initialization failed", error);
+    }
 
     #[cfg(not(feature = "custom-allocator"))]
-    // SAFETY: `initialize_heap` returns the exclusively owned conventional-memory
-    // region after boot services have exited, and this is the allocator's one-time init.
-    unsafe {
-        ALLOCATOR.lock().init(heap_start, heap_size);
-    }
+    allocator::initialize_linked_list_allocator(&ALLOCATOR, heap_region);
 
     idt::init();
     x86_64::instructions::interrupts::enable();
 
-    shell::init(&fb)
+    shell::init()
+}
+
+fn fatal_after_boot(_message: &str, _detail: impl core::fmt::Debug) -> ! {
+    loop {
+        x86_64::instructions::hlt();
+    }
 }
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    if BOOT_SERVICES_EXITED.load(core::sync::atomic::Ordering::Relaxed) {
+    if boot_services_exited() {
         kprintln!("========================================");
         kprintln!("              KERNEL PANIC");
         kprintln!("========================================");

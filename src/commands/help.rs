@@ -1,4 +1,6 @@
-use crate::{commands::Commands, kprintln};
+use crate::kprintln;
+
+use super::parser::{Command, parse};
 
 /// Prints help text for a specific command, or a full command listing if
 /// no argument is given.
@@ -6,45 +8,45 @@ use crate::{commands::Commands, kprintln};
 /// Usage: `help [command]`
 pub(crate) fn help(args: &[&str]) {
     if let Some(cmd) = args.first() {
-        let cmd = Commands::from(*cmd);
-        match cmd {
-            Commands::Help => {
+        let command = parse(cmd).command;
+        match command {
+            Command::Help => {
                 kprintln!("help - show available commands");
                 kprintln!("usage: help [command]");
                 kprintln!("example: help echo");
             }
-            Commands::Echo => {
+            Command::Echo => {
                 kprintln!("echo - print text to the screen");
                 kprintln!("usage: echo <text>");
                 kprintln!("example: echo hello world");
             }
-            Commands::Clear => {
+            Command::Clear => {
                 kprintln!("clear - clear the screen and reset cursor");
                 kprintln!("usage: clear");
             }
-            Commands::About => {
+            Command::About => {
                 kprintln!("about - show information about AgnostOS");
                 kprintln!("usage: about");
             }
-            Commands::History => {
+            Command::History => {
                 kprintln!("history - reprint visible screen history");
                 kprintln!("usage: history");
             }
-            Commands::Font => {
+            Command::Font => {
                 kprintln!("font - change the font size");
                 kprintln!("usage: font <16|20|24|32>");
                 kprintln!("example: font 24");
             }
-            Commands::Meminfo => {
+            Command::Meminfo => {
                 kprintln!("meminfo - show heap memory information");
                 kprintln!("usage: meminfo");
             }
-            Commands::Shutdown => {
+            Command::Shutdown => {
                 kprintln!("shutdown - shuts the machine down instantly");
                 kprintln!("usage: shutdown");
             }
-            Commands::Unknown => kprintln!("unknown command: {}", cmd.text()),
-            Commands::Empty => {}
+            Command::Unknown => kprintln!("unknown command: {}", cmd),
+            Command::Empty => {}
         }
     } else {
         kprintln!("AgnostOS shell - available commands:");

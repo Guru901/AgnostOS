@@ -7,22 +7,35 @@ use uefi::mem::memory_map::MemoryMap;
 
 use crate::{BOOT_SERVICES_EXITED, HEAP_SIZE, HEAP_START};
 
-/// Exits UEFI boot services and returns the largest conventional-memory range
+/// An exclusively owned conventional-memory range selected for the kernel heap.
+///
+/// Its address and length are deliberately kept private: only allocator setup
+/// code can turn this validated region into a raw allocation range.
+#[derive(Debug)]
+pub struct HeapRegion {
+    start: usize,
+    size: usize,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum HeapError {
+    AlreadyInitialized,
+    NoConventionalMemory,
+    TooSmall,
+    Misaligned,
+}
+
+/// Exits UEFI boot services and returns the largest conventional-memory region
 /// for use as the kernel heap.
 ///
 /// # Safety
 /// This may only be called once, after all UEFI boot services have been used.
-/// The returned range is available for exclusive use by the allocator.
+/// The returned region is available for exclusive use by the allocator.
 ///
-/// # Panics
-///
-/// 1. Will panic if the heap has already been initialised.
-/// 2. Will panic if the heap initialised with zero size.
-pub fn initialize_heap() -> (*mut u8, usize) {
-    assert!(
-        HEAP_SIZE.load(Ordering::Relaxed) == 0,
-        "Allocator already initialised"
-    );
+pub fn initialize_heap() -> Result<HeapRegion, HeapError> {
+    if HEAP_SIZE.load(Ordering::Relaxed) != 0 {
+        return Err(HeapError::AlreadyInitialized);
+    }
 
     // Exit boot services — after this point, no UEFI boot service calls are valid.
     // SAFETY: initialization is one-shot and the caller has finished using
@@ -51,13 +64,31 @@ pub fn initialize_heap() -> (*mut u8, usize) {
         }
     }
 
-    assert!(heap_size != 0, "Failed to initialise heap");
+    if heap_size == 0 {
+        return Err(HeapError::NoConventionalMemory);
+    }
 
     // Store heap info globally so commands like `meminfo` can read them.
     HEAP_START.store(heap_start, Ordering::Relaxed);
     HEAP_SIZE.store(heap_size, Ordering::Relaxed);
 
-    (heap_start as *mut u8, heap_size)
+    Ok(HeapRegion {
+        start: heap_start,
+        size: heap_size,
+    })
+}
+
+#[cfg(feature = "linked-list-allocator")]
+/// Initializes the linked-list allocator from an owned heap region.
+pub fn initialize_linked_list_allocator(
+    allocator: &linked_list_allocator::LockedHeap,
+    region: HeapRegion,
+) {
+    // SAFETY: `region` is consumed here and was selected as exclusively owned
+    // conventional memory by `initialize_heap`.
+    unsafe {
+        allocator.lock().init(region.start as *mut u8, region.size);
+    }
 }
 
 #[cfg(feature = "custom-allocator")]
@@ -79,17 +110,18 @@ struct FreeChunk {
 /// free memory it represents — no separate bookkeeping allocation is needed.
 ///
 /// On allocation: walks the free list for a chunk that fits, splits it if
-/// there's enough remainder, and returns the aligned pointer.
+/// there's enough remainder, and returns the aligned pointer. On deallocation,
+/// adjacent free chunks are coalesced to limit fragmentation.
 ///
 /// On deallocation: inserts the freed region back at the head of the free list.
-/// Note: no coalescing is performed — adjacent free chunks are not merged.
 pub struct AgnostOSAllocator {
     head: spin::Mutex<*mut FreeChunk>,
 }
 
-// SAFETY: We are single-core — there is no actual concurrent access.
-// These impls exist only to satisfy Rust's type system requirements for
-// a static global allocator.
+// SAFETY: allocator metadata is protected by `head`; initialization consumes
+// the one owned `HeapRegion` before interrupts are enabled. The kernel has no
+// SMP startup path. Any future SMP support must re-audit these impls and the
+// backing-memory ownership model.
 #[cfg(feature = "custom-allocator")]
 unsafe impl Send for AgnostOSAllocator {}
 #[cfg(feature = "custom-allocator")]
@@ -116,22 +148,15 @@ impl AgnostOSAllocator {
 
     /// Initializes the allocator's free list with the supplied heap range.
     ///
-    /// # Panics
-    /// Will effectively hang/crash if no conventional memory is found,
-    /// since the allocator head remains null and any subsequent allocation
-    /// returns null.
-    ///
-    /// # Safety
-    /// The heap must be exclusively owned by this allocator.
-    pub fn init(&self, heap_start: usize, heap_size: usize) {
-        assert!(
-            heap_size >= core::mem::size_of::<FreeChunk>(),
-            "Heap is too small"
-        );
-        assert!(
-            heap_start.is_multiple_of(core::mem::size_of::<FreeChunk>()),
-            "Heap is misaligned"
-        );
+    pub fn init(&self, region: HeapRegion) -> Result<(), HeapError> {
+        let heap_start = region.start;
+        let heap_size = region.size;
+        if heap_size < core::mem::size_of::<FreeChunk>() {
+            return Err(HeapError::TooSmall);
+        }
+        if !heap_start.is_multiple_of(core::mem::align_of::<FreeChunk>()) {
+            return Err(HeapError::Misaligned);
+        }
 
         // Write the initial FreeChunk header at the start of the heap region,
         // covering the entire heap as one large free chunk.
@@ -143,6 +168,7 @@ impl AgnostOSAllocator {
             (*chunk).next = core::ptr::null_mut();
             *self.head.lock() = chunk;
         }
+        Ok(())
     }
 }
 
@@ -172,9 +198,25 @@ unsafe impl GlobalAlloc for AgnostOSAllocator {
                 let start = chunk as usize;
 
                 // Align the start of the allocation within this chunk.
-                let aligned = (start + align - 1) & !(align - 1);
-                let end = aligned + size;
-                let chunk_end = start + (*chunk).size;
+                let Some(alignment_offset) = align.checked_sub(1) else {
+                    return core::ptr::null_mut();
+                };
+                let Some(aligned_unmasked) = start.checked_add(alignment_offset) else {
+                    prev = &raw mut (*chunk).next;
+                    current = &raw mut (*chunk).next;
+                    continue;
+                };
+                let aligned = aligned_unmasked & !alignment_offset;
+                let Some(end) = aligned.checked_add(size) else {
+                    prev = &raw mut (*chunk).next;
+                    current = &raw mut (*chunk).next;
+                    continue;
+                };
+                let Some(chunk_end) = start.checked_add((*chunk).size) else {
+                    prev = &raw mut (*chunk).next;
+                    current = &raw mut (*chunk).next;
+                    continue;
+                };
 
                 if end <= chunk_end {
                     let remainder_start = end;
@@ -207,9 +249,7 @@ unsafe impl GlobalAlloc for AgnostOSAllocator {
 
     /// Returns a previously allocated region back to the free list.
     ///
-    /// Inserts the freed chunk at the head of the free list.
-    /// Note: adjacent free chunks are **not** coalesced — fragmentation
-    /// will accumulate over time with many small allocations/deallocations.
+    /// Inserts the freed chunk in address order and coalesces adjacent ranges.
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         // SAFETY: `GlobalAlloc` requires `ptr` to be a live allocation from this
         // allocator with `layout`; the mutex gives exclusive access to the free list.
@@ -225,9 +265,42 @@ unsafe impl GlobalAlloc for AgnostOSAllocator {
             debug_assert!(chunk.is_aligned());
             (*chunk).size = size;
 
-            // Insert at head of free list.
-            (*chunk).next = *head;
-            *head = chunk;
+            // Insert in address order so adjacent free ranges can be merged.
+            let mut link: *mut *mut FreeChunk = &raw mut *head;
+            while !(*link).is_null() && (*link as usize) < (chunk as usize) {
+                link = &raw mut (**link).next;
+            }
+            (*chunk).next = *link;
+            *link = chunk;
+
+            // Merge with the following range first.
+            let next = (*chunk).next;
+            if !next.is_null()
+                && (chunk as usize)
+                    .checked_add((*chunk).size)
+                    .is_some_and(|end| end == next as usize)
+                && let Some(merged_size) = (*chunk).size.checked_add((*next).size)
+            {
+                (*chunk).size = merged_size;
+                (*chunk).next = (*next).next;
+            }
+
+            // Find and merge the preceding range, if it is contiguous.
+            let mut previous: *mut FreeChunk = core::ptr::null_mut();
+            let mut current = *head;
+            while !current.is_null() && current != chunk {
+                previous = current;
+                current = (*current).next;
+            }
+            if !previous.is_null()
+                && (previous as usize)
+                    .checked_add((*previous).size)
+                    .is_some_and(|end| end == chunk as usize)
+                && let Some(merged_size) = (*previous).size.checked_add((*chunk).size)
+            {
+                (*previous).size = merged_size;
+                (*previous).next = (*chunk).next;
+            }
         }
     }
 }

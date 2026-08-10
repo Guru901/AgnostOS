@@ -20,13 +20,16 @@ use spin::Mutex;
 
 use crate::{
     FONT_WEIGHT, PROMPT, color,
-    graphics::{self, Framebuffer},
+    graphics::{
+        self, Framebuffer,
+        pixel::{PixelCoord, PixelRows, PixelSize},
+    },
 };
 
 /// Internal writer state. Holds everything needed to render text to the
 /// framebuffer and track terminal state across keystrokes.
 struct KWriter {
-    /// Raw framebuffer to draw into.
+    /// Internal framebuffer handle used to draw into the active display.
     fb: Framebuffer,
     /// Current cursor position in.
     column: usize,
@@ -55,8 +58,10 @@ struct Cell {
     row: usize,
 }
 
-// SAFETY: Single-core kernel — no actual concurrent access occurs.
-// These impls satisfy Rust's type system requirements for a static global.
+// SAFETY: `KWriter` is initialized once before interrupts are enabled, owns the
+// sole framebuffer handle, and is accessed only through `KWRITER`'s mutex.
+// The current kernel is single-core and does not expose an SMP startup path;
+// enabling SMP requires re-auditing the framebuffer mapping and this impl.
 unsafe impl Send for KWriter {}
 
 static KWRITER: Mutex<Option<KWriter>> = Mutex::new(None);
@@ -81,10 +86,8 @@ fn font_w(size: RasterHeight) -> usize {
 /// Initializes the console with the given framebuffer.
 ///
 /// Must be called before any [`kprint!`] or [`kprintln!`] calls.
-/// Clones the framebuffer so the console owns its own copy of the
-/// raw pointer and dimensions.
-pub fn init(fb: &Framebuffer) {
-    let fb = fb.clone();
+/// Creates the console's crate-private drawing handle.
+pub fn init(fb: Framebuffer) {
     *KWRITER.lock() = Some(KWriter {
         fb,
         column: 0,
@@ -95,6 +98,19 @@ pub fn init(fb: &Framebuffer) {
         history: Vec::new(),
         history_index: None,
     });
+}
+
+/// Runs a drawing operation against the console-owned framebuffer.
+///
+/// The framebuffer has a single owner; the writer lock serializes all access.
+pub(crate) fn with_framebuffer(operation: impl FnOnce(&Framebuffer)) {
+    if let Some(writer) = KWRITER.lock().as_ref() {
+        operation(&writer.fb);
+    }
+}
+
+pub(crate) fn clear_background() {
+    with_framebuffer(|fb| graphics::clear_background(fb, &color::BLACK));
 }
 
 impl KWriter {
@@ -109,10 +125,10 @@ impl KWriter {
     /// Scrolls the framebuffer up if the cursor has reached the scroll
     /// threshold (3 lines from the bottom). Adjusts `self.y` accordingly.
     fn check_scroll(&mut self, fh: usize) {
-        let threshold = self.fb.height.saturating_sub(3 * fh);
+        let threshold = self.fb.height().saturating_sub(3 * fh);
         if self.y() >= threshold {
             let scroll_by = self.y() - threshold + fh;
-            graphics::scroll_up(&self.fb, scroll_by);
+            graphics::scroll_up(&self.fb, PixelRows::new(scroll_by));
             self.row = threshold.saturating_sub(fh) / fh;
         }
     }
@@ -123,7 +139,7 @@ impl fmt::Write for KWriter {
     /// and scrolling. Each completed line (terminated by `\n`) is pushed
     /// into `history`.
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        let width = self.fb.width;
+        let width = self.fb.width();
         let fh = font_h(self.font_size);
         let fw = font_w(self.font_size);
 
@@ -151,7 +167,7 @@ impl fmt::Write for KWriter {
             graphics::draw_text(
                 &self.fb,
                 s,
-                (self.x(), self.y()),
+                PixelCoord::new(self.x(), self.y()),
                 color::WHITE,
                 Some(self.font_size),
             );
@@ -230,8 +246,8 @@ pub(crate) fn backspace() {
         // paint over the erased character with background color
         crate::graphics::draw_rec(
             &writer.fb,
-            (writer.x(), writer.y()),
-            (fw, fh),
+            PixelCoord::new(writer.x(), writer.y()),
+            PixelSize::new(fw, fh),
             crate::color::BLACK,
         );
     }
@@ -243,7 +259,7 @@ pub(crate) fn draw_cursor() {
         let fh = font_h(writer.font_size);
         let fw = font_w(writer.font_size);
 
-        if writer.fb.width < writer.x() + fw {
+        if writer.fb.width() < writer.x() + fw {
             writer.column = 0;
             writer.row += 1;
             writer.check_scroll(fh);
@@ -251,8 +267,8 @@ pub(crate) fn draw_cursor() {
 
         crate::graphics::draw_rec(
             &writer.fb,
-            (writer.x(), writer.y()),
-            (fw, fh - 4),
+            PixelCoord::new(writer.x(), writer.y()),
+            PixelSize::new(fw, fh - 4),
             crate::color::WHITE,
         );
     }
@@ -266,8 +282,8 @@ pub(crate) fn erase_cursor() {
         let fw = font_w(writer.font_size);
         crate::graphics::draw_rec(
             &writer.fb,
-            (writer.x(), writer.y()),
-            (fw, fh - 4),
+            PixelCoord::new(writer.x(), writer.y()),
+            PixelSize::new(fw, fh - 4),
             crate::color::BLACK,
         );
     }
@@ -280,7 +296,7 @@ pub(crate) fn erase_cursor() {
 pub(crate) fn print_history() {
     if let Some(writer) = KWRITER.lock().as_mut() {
         let fh = font_h(writer.font_size);
-        let max_lines = writer.fb.height / fh;
+        let max_lines = writer.fb.height() / fh;
 
         // only render the tail of history that fits on screen
         let start = writer.history.len().saturating_sub(max_lines);
@@ -291,7 +307,7 @@ pub(crate) fn print_history() {
             graphics::draw_text(
                 &writer.fb,
                 line,
-                (0, y),
+                PixelCoord::new(0, y),
                 color::WHITE,
                 Some(writer.font_size),
             );
@@ -409,15 +425,15 @@ fn redraw_input_line(writer: &mut KWriter, text: &str) {
     // erase the entire current row
     graphics::draw_rec(
         &writer.fb,
-        (0, writer.y()),
-        (writer.fb.width, fh),
+        PixelCoord::new(0, writer.y()),
+        PixelSize::new(writer.fb.width(), fh),
         color::BLACK,
     );
 
     graphics::draw_text(
         &writer.fb,
         PROMPT,
-        (0, writer.y()),
+        PixelCoord::new(0, writer.y()),
         color::WHITE,
         Some(writer.font_size),
     );
@@ -425,7 +441,7 @@ fn redraw_input_line(writer: &mut KWriter, text: &str) {
     graphics::draw_text(
         &writer.fb,
         text,
-        (fw * PROMPT.chars().count(), writer.y()),
+        PixelCoord::new(fw * PROMPT.chars().count(), writer.y()),
         color::WHITE,
         Some(writer.font_size),
     );
