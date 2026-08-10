@@ -218,42 +218,94 @@ pub(crate) fn poll() -> Option<MouseEvent> {
     })
 }
 
-unsafe fn wait_write_ready() {
+const PS2_READY_POLL_LIMIT: usize = 100_000;
+const CMD_ENABLE_AUX: u8 = 0xa8;
+const CMD_READ_CONFIG: u8 = 0x20;
+const CMD_WRITE_CONFIG: u8 = 0x60;
+const CMD_WRITE_TO_AUX: u8 = 0xd4;
+const MOUSE_ENABLE_PACKETS: u8 = 0xf4;
+const MOUSE_ACK: u8 = 0xfa;
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(crate) enum Ps2Error {
+    Timeout,
+    UnexpectedResponse(u8),
+}
+
+unsafe fn wait_write_ready() -> Result<(), Ps2Error> {
     // bit 1 of status = 1 means input buffer full (controller hasn't read our last byte yet)
     // SAFETY: this helper is called only while communicating with the PS/2
     // controller, whose status register is at `PS2_STATUS`.
-    while unsafe { inb(PS2_STATUS) } & 0b10 != 0 {}
+    for _ in 0..PS2_READY_POLL_LIMIT {
+        if unsafe { inb(PS2_STATUS) } & 0b10 == 0 {
+            return Ok(());
+        }
+    }
+    Err(Ps2Error::Timeout)
 }
-unsafe fn wait_read_ready() {
+unsafe fn wait_read_ready() -> Result<(), Ps2Error> {
     // bit 0 of status = 1 means output buffer full (there's a byte for us to read)
     // SAFETY: this helper is called only while communicating with the PS/2
     // controller, whose status register is at `PS2_STATUS`.
-    while unsafe { inb(PS2_STATUS) } & 0b01 == 0 {}
+    for _ in 0..PS2_READY_POLL_LIMIT {
+        if unsafe { inb(PS2_STATUS) } & 0b01 != 0 {
+            return Ok(());
+        }
+    }
+    Err(Ps2Error::Timeout)
 }
 
-pub(crate) unsafe fn ps2_write_command(cmd: u8) {
+pub(crate) unsafe fn ps2_write_command(cmd: u8) -> Result<(), Ps2Error> {
     // SAFETY: the caller serializes PS/2 controller commands and uses this only
     // on hardware with the legacy controller present.
     unsafe {
-        wait_write_ready();
+        wait_write_ready()?;
         outb(cmd, PS2_COMMAND);
     }
+    Ok(())
 }
 
-pub(crate) unsafe fn ps2_write_data(data: u8) {
+pub(crate) unsafe fn ps2_write_data(data: u8) -> Result<(), Ps2Error> {
     // SAFETY: the caller serializes PS/2 controller data writes and uses this
     // only on hardware with the legacy controller present.
     unsafe {
-        wait_write_ready();
+        wait_write_ready()?;
         outb(data, PS2_DATA);
     }
+    Ok(())
 }
 
-pub(crate) unsafe fn ps2_read_data() -> u8 {
+pub(crate) unsafe fn ps2_read_data() -> Result<u8, Ps2Error> {
     // SAFETY: the caller serializes PS/2 controller access and consumes data
     // only from the legacy controller data port.
     unsafe {
-        wait_read_ready();
-        inb(PS2_DATA)
+        wait_read_ready()?;
+        Ok(inb(PS2_DATA))
     }
+}
+
+/// Configures the PS/2 auxiliary port and enables three-byte mouse packets.
+///
+/// # Safety
+///
+/// The caller must disable interrupts and serialize all PS/2 controller access
+/// for the full command sequence.
+pub(crate) unsafe fn initialize_controller() -> Result<(), Ps2Error> {
+    unsafe {
+        ps2_write_command(CMD_ENABLE_AUX)?;
+        ps2_write_command(CMD_READ_CONFIG)?;
+        let mut config = ps2_read_data()?;
+        // Bit 1 enables IRQ12; bit 5 enables the auxiliary device clock.
+        config |= 0b0000_0010;
+        config &= !0b0010_0000;
+        ps2_write_command(CMD_WRITE_CONFIG)?;
+        ps2_write_data(config)?;
+        ps2_write_command(CMD_WRITE_TO_AUX)?;
+        ps2_write_data(MOUSE_ENABLE_PACKETS)?;
+        let ack = ps2_read_data()?;
+        if ack != MOUSE_ACK {
+            return Err(Ps2Error::UnexpectedResponse(ack));
+        }
+    }
+    Ok(())
 }

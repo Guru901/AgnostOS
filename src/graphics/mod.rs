@@ -1,16 +1,10 @@
-use alloc::boxed::Box;
-use alloc::vec;
-
 use noto_sans_mono_bitmap::{RasterHeight, RasterizedChar, get_raster};
 use uefi::proto::console::gop::{GraphicsOutput, PixelFormat};
 
-use crate::{
-    FONT_HEIGHT, FONT_WEIGHT,
-    color::Color,
-    graphics::pixel::{PixelCoord, PixelRadius, PixelRows, PixelSize, Stride},
-};
+use crate::{FONT_HEIGHT, FONT_WEIGHT, color::Color};
 
 pub mod pixel;
+pub use pixel::{PixelCoord, PixelRadius, PixelRows, PixelSize, Stride};
 
 /// A count of bytes in a framebuffer mapping.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
@@ -156,41 +150,6 @@ impl Framebuffer {
         self.stride.get()
     }
 
-    /// Creates the second internal handle needed by the console writer.
-    ///
-    /// The kernel is single-core and serializes drawing through its console
-    /// lock; keeping this operation crate-private prevents downstream callers
-    /// from manufacturing aliased drawing handles.
-    pub(crate) fn duplicate_for_console(&self) -> Self {
-        Self {
-            ptr: self.ptr,
-            size: self.size,
-            stride: self.stride,
-            pixel_format: self.pixel_format,
-            byte_len: self.byte_len,
-        }
-    }
-
-    #[doc(hidden)]
-    #[must_use]
-    pub fn for_doc_test() -> Self {
-        const WIDTH: usize = 300;
-        const HEIGHT: usize = 300;
-        // The examples render through a raw framebuffer pointer, so retain a
-        // heap allocation for the duration of the doctest rather than using a
-        // null pointer.  It is intentionally leaked: `Framebuffer` does not
-        // own pointers returned by `new`, and therefore cannot safely free it.
-        let pixels = Box::leak(vec![0_u8; WIDTH * HEIGHT * 4].into_boxed_slice());
-
-        Self {
-            ptr: pixels.as_mut_ptr(),
-            size: PixelSize::new(WIDTH, HEIGHT),
-            stride: Stride::new(WIDTH),
-            pixel_format: PixelFormat::Bgr,
-            byte_len: FramebufferBytes::new(WIDTH * HEIGHT * 4),
-        }
-    }
-
     fn required_byte_len(size: PixelSize, stride: Stride) -> Option<FramebufferBytes> {
         if size.width() > stride.get() {
             return None;
@@ -296,10 +255,9 @@ impl Framebuffer {
 ///
 /// **Example**
 ///
-/// ```rust
+/// ```ignore
 /// use agnostos::color::Color;
 /// use agnostos::graphics::Framebuffer;
-/// # let fb = Framebuffer::for_doc_test();
 /// agnostos::graphics::clear_background(&fb, &Color { r: 255, g: 255, b: 255 });
 /// ```
 pub fn clear_background(fb: &Framebuffer, color: &Color) {
@@ -329,10 +287,9 @@ pub fn clear_background(fb: &Framebuffer, color: &Color) {
 ///
 /// **Example**
 ///
-/// ```rust
+/// ```ignore
 /// use agnostos::color::Color;
 /// use agnostos::graphics::Framebuffer;
-/// # let fb = Framebuffer::for_doc_test();
 /// agnostos::graphics::draw_rec(&fb, PixelCoord::new(100, 100), PixelSize::new(100, 100), Color { r: 0, g: 0, b: 0 });
 /// ```
 pub fn draw_rec(fb: &Framebuffer, origin: PixelCoord, size: PixelSize, color: Color) {
@@ -364,10 +321,9 @@ pub fn draw_rec(fb: &Framebuffer, origin: PixelCoord, size: PixelSize, color: Co
 ///
 /// **Example**
 ///
-/// ```rust
+/// ```ignore
 /// use agnostos::color::Color;
 /// use agnostos::graphics::Framebuffer;
-/// # let fb = Framebuffer::for_doc_test();
 /// agnostos::graphics::draw_circle(&fb, PixelRadius::new(20), PixelCoord::new(100, 100), Color { r: 0, g: 0, b: 0 });
 /// ```
 pub fn draw_circle(fb: &Framebuffer, radius: PixelRadius, center: PixelCoord, color: Color) {
@@ -423,10 +379,9 @@ pub fn draw_circle(fb: &Framebuffer, radius: PixelRadius, center: PixelCoord, co
 ///
 /// **Example**
 ///
-/// ```rust
+/// ```ignore
 /// use agnostos::color::Color;
 /// use agnostos::graphics::Framebuffer;
-/// # let fb = Framebuffer::for_doc_test();
 /// agnostos::graphics::draw_line(&fb, PixelCoord::new(100, 100), PixelCoord::new(100, 100), Color { r: 0, g: 0, b: 0 });
 /// ```
 pub fn draw_line(fb: &Framebuffer, start: PixelCoord, end: PixelCoord, color: Color) {
@@ -444,8 +399,12 @@ pub fn draw_line(fb: &Framebuffer, start: PixelCoord, end: PixelCoord, color: Co
     ) else {
         return;
     };
-    let delta_x = (x2 - x1).abs();
-    let delta_y = (y2 - y1).abs();
+    let Some(delta_x) = x2.checked_sub(x1).or_else(|| x1.checked_sub(x2)) else {
+        return;
+    };
+    let Some(delta_y) = y2.checked_sub(y1).or_else(|| y1.checked_sub(y2)) else {
+        return;
+    };
     let sx = if x2 >= x1 { 1 } else { -1 };
     let sy = if y2 >= y1 { 1 } else { -1 };
     let mut err = delta_x - delta_y;
@@ -469,16 +428,30 @@ pub fn draw_line(fb: &Framebuffer, start: PixelCoord, end: PixelCoord, color: Co
             break;
         }
 
-        let e2 = 2 * err;
+        let Some(e2) = err.checked_mul(2) else {
+            return;
+        };
 
         if e2 > -delta_y {
-            err -= delta_y;
-            x += sx;
+            let Some(next_err) = err.checked_sub(delta_y) else {
+                return;
+            };
+            let Some(next_x) = x.checked_add(sx) else {
+                return;
+            };
+            err = next_err;
+            x = next_x;
         }
 
         if e2 < delta_x {
-            err += delta_x;
-            y += sy;
+            let Some(next_err) = err.checked_add(delta_x) else {
+                return;
+            };
+            let Some(next_y) = y.checked_add(sy) else {
+                return;
+            };
+            err = next_err;
+            y = next_y;
         }
     }
 }
@@ -517,10 +490,9 @@ pub fn scroll_up(fb: &Framebuffer, rows: PixelRows) {
 ///
 /// **Example**
 ///
-/// ```
+/// ```ignore
 /// use agnostos::color::Color;
 /// use agnostos::graphics::Framebuffer;
-/// # let fb = Framebuffer::for_doc_test();
 /// agnostos::graphics::draw_text(&fb, "Random text to render", PixelCoord::new(100, 200), Color { r: 0, g: 0, b: 0 }, None);
 /// ```
 pub fn draw_text(

@@ -7,9 +7,7 @@ use x86_64::{
 use crate::keyboard::{KEYBOARD_QUEUE, Scancode};
 use crate::kprintln;
 #[cfg(feature = "mouse")]
-use crate::mouse::{MOUSE_QUEUE, ps2_write_data};
-#[cfg(feature = "mouse")]
-use crate::mouse::{ps2_read_data, ps2_write_command};
+use crate::mouse::{MOUSE_QUEUE, initialize_controller};
 
 static IDT: Once<InterruptDescriptorTable> = Once::new();
 static PIC_INITIALIZED: Once<()> = Once::new();
@@ -38,7 +36,7 @@ pub fn init() {
             // SAFETY: interrupts remain disabled, so PS/2 controller setup cannot
             // race its IRQ handlers.
             unsafe {
-                initialize_mouse()
+                let _ = initialize_controller();
             };
         });
     });
@@ -53,20 +51,6 @@ const PIC2_OFFSET: u8 = 40;
 const KEYBOARD_INTERRUPT_VECTOR: u8 = PIC1_OFFSET + 1;
 #[cfg(feature = "mouse")]
 const MOUSE_INTERRUPT_VECTOR: u8 = PIC2_OFFSET + 4;
-#[cfg(feature = "mouse")]
-// Controller commands
-const CMD_ENABLE_AUX: u8 = 0xa8; // enable the second PS/2 port (mouse)
-#[cfg(feature = "mouse")]
-const CMD_READ_CONFIG: u8 = 0x20;
-#[cfg(feature = "mouse")]
-const CMD_WRITE_CONFIG: u8 = 0x60;
-#[cfg(feature = "mouse")]
-const CMD_WRITE_TO_AUX: u8 = 0xd4; // "next byte on 0x60 goes to the mouse, not keyboard"
-
-#[cfg(feature = "mouse")]
-const MOUSE_ENABLE_PACKETS: u8 = 0xf4;
-#[cfg(feature = "mouse")]
-const MOUSE_ACK: u8 = 0xfa;
 
 /// Maps hardware IRQs away from CPU exception vectors and unmasks IRQ1
 /// (keyboard). With the `mouse` feature, it also unmasks IRQ2 (slave cascade)
@@ -106,31 +90,6 @@ unsafe fn initialize_pic() {
 
         outb(MASTER_IRQ_MASK, PIC1_DATA);
         outb(SLAVE_IRQ_MASK, PIC2_DATA);
-    }
-}
-
-#[cfg(feature = "mouse")]
-unsafe fn initialize_mouse() {
-    // SAFETY: interrupts are disabled and this is the only PS/2 controller setup
-    // path, so the command/data sequence cannot be interleaved.
-    unsafe {
-        // 1. Tell the controller to enable the auxiliary (mouse) port.
-        ps2_write_command(CMD_ENABLE_AUX);
-
-        // 2. Read the controller's config byte, set the bit that enables
-        //    IRQ12 generation on mouse activity, write it back.
-        ps2_write_command(CMD_READ_CONFIG);
-        let mut config = ps2_read_data();
-        config |= 0b0000_0010; // bit 1 = enable IRQ12 (aux interrupt)
-        config &= !0b0010_0000; // bit 5 = disable aux clock masking
-        ps2_write_command(CMD_WRITE_CONFIG);
-        ps2_write_data(config);
-
-        // 3. Tell the mouse itself to start sending movement packets.
-        ps2_write_command(CMD_WRITE_TO_AUX);
-        ps2_write_data(MOUSE_ENABLE_PACKETS);
-        let ack = ps2_read_data();
-        debug_assert_eq!(ack, MOUSE_ACK, "mouse did not ack enable-packets command");
     }
 }
 

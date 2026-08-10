@@ -58,8 +58,10 @@ struct Cell {
     row: usize,
 }
 
-// SAFETY: Single-core kernel — no actual concurrent access occurs.
-// These impls satisfy Rust's type system requirements for a static global.
+// SAFETY: `KWriter` is initialized once before interrupts are enabled, owns the
+// sole framebuffer handle, and is accessed only through `KWRITER`'s mutex.
+// The current kernel is single-core and does not expose an SMP startup path;
+// enabling SMP requires re-auditing the framebuffer mapping and this impl.
 unsafe impl Send for KWriter {}
 
 static KWRITER: Mutex<Option<KWriter>> = Mutex::new(None);
@@ -85,8 +87,7 @@ fn font_w(size: RasterHeight) -> usize {
 ///
 /// Must be called before any [`kprint!`] or [`kprintln!`] calls.
 /// Creates the console's crate-private drawing handle.
-pub fn init(fb: &Framebuffer) {
-    let fb = fb.duplicate_for_console();
+pub fn init(fb: Framebuffer) {
     *KWRITER.lock() = Some(KWriter {
         fb,
         column: 0,
@@ -97,6 +98,19 @@ pub fn init(fb: &Framebuffer) {
         history: Vec::new(),
         history_index: None,
     });
+}
+
+/// Runs a drawing operation against the console-owned framebuffer.
+///
+/// The framebuffer has a single owner; the writer lock serializes all access.
+pub(crate) fn with_framebuffer(operation: impl FnOnce(&Framebuffer)) {
+    if let Some(writer) = KWRITER.lock().as_ref() {
+        operation(&writer.fb);
+    }
+}
+
+pub(crate) fn clear_background() {
+    with_framebuffer(|fb| graphics::clear_background(fb, &color::BLACK));
 }
 
 impl KWriter {

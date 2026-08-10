@@ -37,7 +37,7 @@ fn main() -> Status {
         }
     };
 
-    console::init(&fb);
+    console::init(fb);
     uefi::println!("Exiting boot services in 1 seconds...");
 
     let heap_region = allocator::initialize_heap();
@@ -51,7 +51,7 @@ fn main() -> Status {
     idt::init();
     x86_64::instructions::interrupts::enable();
 
-    shell::init(&fb)
+    shell::init()
 }
 
 #[panic_handler]
