@@ -105,6 +105,10 @@ impl Framebuffer {
 
     #[inline]
     #[cfg(feature = "mouse")]
+    /// # Safety
+    ///
+    /// `self` must retain a valid framebuffer mapping for the duration of this
+    /// call. Callers must also prevent concurrent non-atomic access to it.
     pub(crate) unsafe fn read_pixel(&self, x: usize, y: usize) -> Color {
         use crate::color;
         if !self.is_drawable() || x >= self.width || y >= self.height {
@@ -124,7 +128,10 @@ impl Framebuffer {
             return color::BLACK;
         }
 
+        // SAFETY: the framebuffer invariant and checks above make `offset..offset
+        // + 4` a valid range within the framebuffer allocation.
         let p = unsafe { self.ptr.add(offset) };
+        // SAFETY: `p` and its next two bytes lie in the validated pixel range.
         let (first, second, third) = unsafe {
             (
                 p.read_volatile(),
@@ -141,6 +148,10 @@ impl Framebuffer {
     }
 
     #[inline]
+    /// # Safety
+    ///
+    /// `self` must retain a valid framebuffer mapping for the duration of this
+    /// call. Callers must also prevent concurrent non-atomic access to it.
     pub(crate) unsafe fn write_pixel(&self, pixel_index: usize, color: &Color) -> bool {
         let rgb = match self.pixel_format {
             PixelFormat::Bgr => [color.b, color.g, color.r],
@@ -185,7 +196,8 @@ pub fn clear_background(fb: &Framebuffer, color: &Color) {
     for row in 0..fb.height {
         for col in 0..fb.width {
             let pixel_index = row * fb.stride + col;
-            // SAFETY: `row` and `col` are bounded by the framebuffer dimensions.
+            // SAFETY: `is_drawable` validates the backing range, and `row` and
+            // `col` are bounded by the framebuffer dimensions.
             unsafe { fb.write_pixel(pixel_index, color) };
         }
     }
@@ -225,7 +237,8 @@ pub fn draw_rec(fb: &Framebuffer, (x, y): (usize, usize), (w, h): (usize, usize)
     for row in y..y2 {
         for col in x..x2 {
             let pixel_index = row * fb.stride + col;
-            // SAFETY: the coordinate assertions above keep this pixel in bounds.
+            // SAFETY: `is_drawable` validates the backing range, and the coordinate
+            // assertions above keep this pixel in bounds.
             unsafe { fb.write_pixel(pixel_index, &color) };
         }
     }
@@ -277,7 +290,8 @@ pub fn draw_circle(fb: &Framebuffer, radius: usize, (cx, cy): (usize, usize), co
 
                 if pixel_x >= 0 && pixel_y >= 0 && pixel_x < width && pixel_y < height {
                     let pixel_index = pixel_y.cast_unsigned() * fb.stride + pixel_x.cast_unsigned();
-                    // SAFETY: the preceding bounds check keeps the pixel in the framebuffer.
+                    // SAFETY: `is_drawable` validates the backing range, and the
+                    // preceding bounds check keeps the pixel in the framebuffer.
                     unsafe {
                         fb.write_pixel(pixel_index, &color);
                     }
@@ -319,7 +333,8 @@ pub fn draw_line(fb: &Framebuffer, (x1, y1): (i64, i64), (x2, y2): (i64, i64), c
                 continue;
             };
             let pixel_index = row * fb.stride + column;
-            // SAFETY: the bounds check above keeps `(x, y)` in the framebuffer.
+            // SAFETY: `is_drawable` validates the backing range, and the bounds
+            // check above keeps `(x, y)` in the framebuffer.
             unsafe {
                 fb.write_pixel(pixel_index, &color);
             }
@@ -447,7 +462,8 @@ fn draw_glyph(
             let blue = blend_channel(color.b, intensity);
 
             let pixel_index = pixel_y * fb.stride + pixel_x;
-            // SAFETY: out-of-bounds glyph pixels are skipped immediately above.
+            // SAFETY: `is_drawable` validates the backing range, and out-of-bounds
+            // glyph pixels are skipped immediately above.
             unsafe { fb.write_pixel(pixel_index, &Color::new(red, green, blue)) };
         }
     }

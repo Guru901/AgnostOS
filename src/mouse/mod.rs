@@ -36,6 +36,8 @@ pub fn draw_mouse_cursor(fb: &Framebuffer, x: usize, y: usize) {
 
     for row in 0..MOUSE_CURSOR_SIZE.1 {
         for col in 0..MOUSE_CURSOR_SIZE.0 {
+            // SAFETY: the cursor rectangle was checked to fit in this drawable
+            // framebuffer, and `read_pixel` rechecks its byte offset.
             cursor.saved_under[row * MOUSE_CURSOR_SIZE.0 + col] =
                 unsafe { fb.read_pixel(x + col, y + row) };
         }
@@ -50,6 +52,8 @@ pub fn erase_mouse_cursor(fb: &Framebuffer) {
     if let Some((x, y)) = cursor.position.take() {
         for row in 0..MOUSE_CURSOR_SIZE.1 {
             for col in 0..MOUSE_CURSOR_SIZE.0 {
+                // SAFETY: `write_pixel` validates the computed pixel range before
+                // performing its raw framebuffer write.
                 unsafe {
                     fb.write_pixel(
                         (y + row) * fb.stride + (x + col),
@@ -198,14 +202,20 @@ pub fn poll() -> Option<MouseEvent> {
 
 unsafe fn wait_write_ready() {
     // bit 1 of status = 1 means input buffer full (controller hasn't read our last byte yet)
+    // SAFETY: this helper is called only while communicating with the PS/2
+    // controller, whose status register is at `PS2_STATUS`.
     while unsafe { inb(PS2_STATUS) } & 0b10 != 0 {}
 }
 unsafe fn wait_read_ready() {
     // bit 0 of status = 1 means output buffer full (there's a byte for us to read)
+    // SAFETY: this helper is called only while communicating with the PS/2
+    // controller, whose status register is at `PS2_STATUS`.
     while unsafe { inb(PS2_STATUS) } & 0b01 == 0 {}
 }
 
 pub(crate) unsafe fn ps2_write_command(cmd: u8) {
+    // SAFETY: the caller serializes PS/2 controller commands and uses this only
+    // on hardware with the legacy controller present.
     unsafe {
         wait_write_ready();
         outb(cmd, PS2_COMMAND);
@@ -213,6 +223,8 @@ pub(crate) unsafe fn ps2_write_command(cmd: u8) {
 }
 
 pub(crate) unsafe fn ps2_write_data(data: u8) {
+    // SAFETY: the caller serializes PS/2 controller data writes and uses this
+    // only on hardware with the legacy controller present.
     unsafe {
         wait_write_ready();
         outb(data, PS2_DATA);
@@ -220,6 +232,8 @@ pub(crate) unsafe fn ps2_write_data(data: u8) {
 }
 
 pub(crate) unsafe fn ps2_read_data() -> u8 {
+    // SAFETY: the caller serializes PS/2 controller access and consumes data
+    // only from the legacy controller data port.
     unsafe {
         wait_read_ready();
         inb(PS2_DATA)

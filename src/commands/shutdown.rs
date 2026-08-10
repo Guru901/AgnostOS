@@ -1,6 +1,8 @@
 use x86_64::instructions::port::Port;
 
 pub fn exit_qemu(code: u32) -> ! {
+    // SAFETY: port `0xf4` is the QEMU isa-debug-exit device configured for this
+    // kernel. Calling this on other hardware can have device-specific effects.
     unsafe {
         let mut port = Port::<u32>::new(0xf4);
         port.write(code);
