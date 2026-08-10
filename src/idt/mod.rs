@@ -98,10 +98,14 @@ extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
 }
 
 extern "x86-interrupt" fn double_fault_handler(
-    stack_frame: InterruptStackFrame,
-    error_code: u64,
+    _stack_frame: InterruptStackFrame,
+    _error_code: u64,
 ) -> ! {
-    panic!("{:#?} {}", stack_frame, error_code);
+    // A double fault may indicate that the stack, allocator, or console is no
+    // longer usable. Avoid invoking the normal panic path and halt directly.
+    loop {
+        x86_64::instructions::hlt();
+    }
 }
 
 /// # Safety
