@@ -6,12 +6,12 @@ use uefi::proto::console::gop::{GraphicsOutput, PixelFormat};
 
 use crate::{FONT_HEIGHT, FONT_WEIGHT, color::Color};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Framebuffer {
     ptr: *mut u8,
-    pub(crate) width: usize,
-    pub(crate) height: usize,
-    pub(crate) stride: usize,
+    width: usize,
+    height: usize,
+    stride: usize,
     /// Pixel layout selected by GOP. Direct rendering supports only `Rgb` and
     /// `Bgr`, both of which are 32-bit formats.
     pixel_format: PixelFormat,
@@ -62,6 +62,86 @@ impl Framebuffer {
             pixel_format,
             byte_len,
         })
+    }
+
+    /// Builds a framebuffer backed by a caller-provided byte slice.
+    ///
+    /// This is primarily useful for host-side rendering tests. The geometry and
+    /// backing length are checked before a framebuffer is created. The caller
+    /// must keep `bytes` alive and must not access it while the framebuffer is
+    /// being drawn to.
+    ///
+    /// # Safety
+    ///
+    /// The backing slice must remain allocated and exclusively available for
+    /// framebuffer access until the returned `Framebuffer` is no longer used.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for unsupported pixel formats, invalid geometry, or a
+    /// backing slice that is too small.
+    #[doc(hidden)]
+    pub unsafe fn from_mut_slice(
+        bytes: &mut [u8],
+        width: usize,
+        height: usize,
+        stride: usize,
+        pixel_format: PixelFormat,
+    ) -> Result<Self, FramebufferError> {
+        if !matches!(pixel_format, PixelFormat::Rgb | PixelFormat::Bgr) {
+            return Err(FramebufferError::UnsupportedPixelFormat(pixel_format));
+        }
+        let required = Self::required_byte_len(width, height, stride)
+            .ok_or(FramebufferError::InvalidGeometry)?;
+        if bytes.len() < required {
+            return Err(FramebufferError::FramebufferTooSmall {
+                required,
+                actual: bytes.len(),
+            });
+        }
+
+        Ok(Self {
+            ptr: bytes.as_mut_ptr(),
+            width,
+            height,
+            stride,
+            pixel_format,
+            byte_len: bytes.len(),
+        })
+    }
+
+    /// Width of the visible framebuffer, in pixels.
+    #[must_use]
+    pub const fn width(&self) -> usize {
+        self.width
+    }
+
+    /// Height of the visible framebuffer, in pixels.
+    #[must_use]
+    pub const fn height(&self) -> usize {
+        self.height
+    }
+
+    /// Number of pixels between the starts of two consecutive rows.
+    #[must_use]
+    pub const fn stride(&self) -> usize {
+        self.stride
+    }
+
+    /// Creates the second internal handle needed by the console writer.
+    ///
+    /// The kernel is single-core and serializes drawing through its console
+    /// lock; keeping this operation crate-private prevents downstream callers
+    /// from manufacturing aliased drawing handles.
+    pub(crate) fn duplicate_for_console(&self) -> Self {
+        Self {
+            ptr: self.ptr,
+            width: self.width,
+            height: self.height,
+            stride: self.stride,
+            pixel_format: self.pixel_format,
+            byte_len: self.byte_len,
+        }
     }
 
     #[doc(hidden)]
@@ -193,9 +273,9 @@ pub fn clear_background(fb: &Framebuffer, color: &Color) {
         return;
     }
 
-    for row in 0..fb.height {
-        for col in 0..fb.width {
-            let pixel_index = row * fb.stride + col;
+    for row in 0..fb.height() {
+        for col in 0..fb.width() {
+            let pixel_index = row * fb.stride() + col;
             // SAFETY: `is_drawable` validates the backing range, and `row` and
             // `col` are bounded by the framebuffer dimensions.
             unsafe { fb.write_pixel(pixel_index, color) };
@@ -231,12 +311,12 @@ pub fn draw_rec(fb: &Framebuffer, (x, y): (usize, usize), (w, h): (usize, usize)
     let Some(y2) = y.checked_add(h) else {
         return;
     };
-    assert!(x2 <= fb.width, "Bad X coordinate");
-    assert!(y2 <= fb.height, "Bad Y coordinate");
+    assert!(x2 <= fb.width(), "Bad X coordinate");
+    assert!(y2 <= fb.height(), "Bad Y coordinate");
 
     for row in y..y2 {
         for col in x..x2 {
-            let pixel_index = row * fb.stride + col;
+            let pixel_index = row * fb.stride() + col;
             // SAFETY: `is_drawable` validates the backing range, and the coordinate
             // assertions above keep this pixel in bounds.
             unsafe { fb.write_pixel(pixel_index, &color) };
@@ -263,8 +343,8 @@ pub fn draw_circle(fb: &Framebuffer, radius: usize, (cx, cy): (usize, usize), co
         isize::try_from(radius),
         isize::try_from(cx),
         isize::try_from(cy),
-        isize::try_from(fb.width),
-        isize::try_from(fb.height),
+        isize::try_from(fb.width()),
+        isize::try_from(fb.height()),
     ) else {
         return;
     };
@@ -289,7 +369,7 @@ pub fn draw_circle(fb: &Framebuffer, radius: usize, (cx, cy): (usize, usize), co
                 };
 
                 if pixel_x >= 0 && pixel_y >= 0 && pixel_x < width && pixel_y < height {
-                    let pixel_index = pixel_y.cast_unsigned() * fb.stride + pixel_x.cast_unsigned();
+                    let pixel_index = pixel_y.cast_unsigned() * fb.stride() + pixel_x.cast_unsigned();
                     // SAFETY: `is_drawable` validates the backing range, and the
                     // preceding bounds check keeps the pixel in the framebuffer.
                     unsafe {
@@ -316,7 +396,7 @@ pub fn draw_line(fb: &Framebuffer, (x1, y1): (i64, i64), (x2, y2): (i64, i64), c
         return;
     }
 
-    let (Ok(width), Ok(height)) = (i64::try_from(fb.width), i64::try_from(fb.height)) else {
+    let (Ok(width), Ok(height)) = (i64::try_from(fb.width()), i64::try_from(fb.height())) else {
         return;
     };
     let delta_x = (x2 - x1).abs();
@@ -332,7 +412,7 @@ pub fn draw_line(fb: &Framebuffer, (x1, y1): (i64, i64), (x2, y2): (i64, i64), c
             let (Ok(row), Ok(column)) = (usize::try_from(y), usize::try_from(x)) else {
                 continue;
             };
-            let pixel_index = row * fb.stride + column;
+            let pixel_index = row * fb.stride() + column;
             // SAFETY: `is_drawable` validates the backing range, and the bounds
             // check above keeps `(x, y)` in the framebuffer.
             unsafe {
@@ -363,10 +443,10 @@ pub fn scroll_up(fb: &Framebuffer, rows: usize) {
     if !fb.is_drawable() {
         return;
     }
-    if rows >= fb.height {
+    if rows >= fb.height() {
         // SAFETY: `is_drawable` verifies the entire framebuffer span is valid.
         unsafe {
-            core::ptr::write_bytes(fb.ptr, 0, fb.stride * fb.height * 4);
+            core::ptr::write_bytes(fb.ptr, 0, fb.stride() * fb.height() * 4);
         }
         return;
     }
@@ -374,8 +454,8 @@ pub fn scroll_up(fb: &Framebuffer, rows: usize) {
         return;
     }
 
-    let row_bytes = fb.stride * 4;
-    let moved_bytes = (fb.height - rows) * row_bytes;
+    let row_bytes = fb.stride() * 4;
+    let moved_bytes = (fb.height() - rows) * row_bytes;
     let cleared_bytes = rows * row_bytes;
 
     // SAFETY: `is_drawable` verifies the whole `stride * height * 4` byte
@@ -452,7 +532,7 @@ fn draw_glyph(
                 continue;
             };
 
-            if pixel_x >= fb.width || pixel_y >= fb.height {
+            if pixel_x >= fb.width() || pixel_y >= fb.height() {
                 continue;
             }
 
@@ -461,7 +541,7 @@ fn draw_glyph(
             let green = blend_channel(color.g, intensity);
             let blue = blend_channel(color.b, intensity);
 
-            let pixel_index = pixel_y * fb.stride + pixel_x;
+            let pixel_index = pixel_y * fb.stride() + pixel_x;
             // SAFETY: `is_drawable` validates the backing range, and out-of-bounds
             // glyph pixels are skipped immediately above.
             unsafe { fb.write_pixel(pixel_index, &Color::new(red, green, blue)) };
@@ -483,52 +563,33 @@ mod tests {
     #[test]
     fn draw_line_colors_every_pixel_on_a_horizontal_line() {
         let mut pixels = vec![0u8; 5 * 3 * 4];
-        let fb = Framebuffer {
-            ptr: pixels.as_mut_ptr(),
-            width: 5,
-            height: 3,
-            stride: 5,
-            pixel_format: PixelFormat::Rgb,
-            byte_len: pixels.len(),
-        };
+        // SAFETY: `pixels` remains alive and is not otherwise accessed while drawing.
+        let fb = unsafe { Framebuffer::from_mut_slice(&mut pixels, 5, 3, 5, PixelFormat::Rgb) }.unwrap();
 
         draw_line(&fb, (1, 1), (3, 1), Color::new(255, 0, 0));
 
         for x in 1..=3 {
-            let offset = (fb.stride + x) * 4;
+            let offset = (fb.stride() + x) * 4;
             assert_eq!(&pixels[offset..offset + 3], &[255, 0, 0]);
         }
     }
 
     #[test]
-    fn malformed_framebuffer_is_not_drawable_or_written() {
+    fn too_small_framebuffer_is_rejected() {
         let mut pixels = vec![0x55u8; 3];
-        let fb = Framebuffer {
-            ptr: pixels.as_mut_ptr(),
-            width: 1,
-            height: 1,
-            stride: 1,
-            pixel_format: PixelFormat::Rgb,
-            byte_len: pixels.len(),
-        };
+        // SAFETY: the constructor only inspects `pixels` before rejecting it.
+        let fb = unsafe { Framebuffer::from_mut_slice(&mut pixels, 1, 1, 1, PixelFormat::Rgb) };
 
-        assert!(!fb.is_drawable());
-        clear_background(&fb, &Color::new(1, 2, 3));
+        assert!(matches!(fb, Err(FramebufferError::FramebufferTooSmall { .. })));
         assert_eq!(&pixels, &[0x55, 0x55, 0x55]);
     }
 
     #[test]
     fn bitmask_framebuffer_is_not_drawable() {
         let mut pixels = vec![0u8; 4];
-        let fb = Framebuffer {
-            ptr: pixels.as_mut_ptr(),
-            width: 1,
-            height: 1,
-            stride: 1,
-            pixel_format: PixelFormat::Bitmask,
-            byte_len: pixels.len(),
-        };
+        // SAFETY: the constructor only inspects `pixels` before rejecting it.
+        let fb = unsafe { Framebuffer::from_mut_slice(&mut pixels, 1, 1, 1, PixelFormat::Bitmask) };
 
-        assert!(!fb.is_drawable());
+        assert!(matches!(fb, Err(FramebufferError::UnsupportedPixelFormat(PixelFormat::Bitmask))));
     }
 }

@@ -40,17 +40,13 @@ fn main() -> Status {
     console::init(&fb);
     uefi::println!("Exiting boot services in 1 seconds...");
 
-    let (heap_start, heap_size) = allocator::initialize_heap();
+    let heap_region = allocator::initialize_heap();
 
     #[cfg(feature = "custom-allocator")]
-    ALLOCATOR.init(heap_start, heap_size);
+    ALLOCATOR.init(heap_region);
 
     #[cfg(not(feature = "custom-allocator"))]
-    // SAFETY: `initialize_heap` returns the exclusively owned conventional-memory
-    // region after boot services have exited, and this is the allocator's one-time init.
-    unsafe {
-        ALLOCATOR.lock().init(heap_start as *mut u8, heap_size);
-    }
+    allocator::initialize_linked_list_allocator(&ALLOCATOR, heap_region);
 
     idt::init();
     x86_64::instructions::interrupts::enable();

@@ -46,8 +46,8 @@ pub fn init(fb: &Framebuffer) -> ! {
             if let Some(event) = mouse::poll() {
                 use crate::{CURSOR_H, CURSOR_W};
                 mouse::erase_mouse_cursor(fb);
-                mouse_x = (mouse_x + event.dx as i32).clamp(0, fb.width as i32 - CURSOR_W as i32);
-                mouse_y = (mouse_y + event.dy as i32).clamp(0, fb.height as i32 - CURSOR_H as i32);
+                mouse_x = (mouse_x + event.dx as i32).clamp(0, fb.width() as i32 - CURSOR_W as i32);
+                mouse_y = (mouse_y + event.dy as i32).clamp(0, fb.height() as i32 - CURSOR_H as i32);
                 mouse::draw_mouse_cursor(fb, mouse_x as usize, mouse_y as usize);
             }
         }

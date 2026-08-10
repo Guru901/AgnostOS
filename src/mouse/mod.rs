@@ -28,7 +28,7 @@ pub fn draw_mouse_cursor(fb: &Framebuffer, x: usize, y: usize) {
     let Some(bottom) = y.checked_add(MOUSE_CURSOR_SIZE.1) else {
         return;
     };
-    if !fb.is_drawable() || right > fb.width || bottom > fb.height {
+    if !fb.is_drawable() || right > fb.width() || bottom > fb.height() {
         return;
     }
 
@@ -56,7 +56,7 @@ pub fn erase_mouse_cursor(fb: &Framebuffer) {
                 // performing its raw framebuffer write.
                 unsafe {
                     fb.write_pixel(
-                        (y + row) * fb.stride + (x + col),
+                        (y + row) * fb.stride() + (x + col),
                         &cursor.saved_under[row * MOUSE_CURSOR_SIZE.0 + col],
                     )
                 };
@@ -79,14 +79,8 @@ mod tests {
             *byte = index as u8;
         }
         let original = bytes.clone();
-        let fb = Framebuffer {
-            ptr: bytes.as_mut_ptr(),
-            width: 7,
-            height: 7,
-            stride: 7,
-            pixel_format: PixelFormat::Rgb,
-            byte_len: bytes.len(),
-        };
+        // SAFETY: `bytes` remains alive and is not otherwise accessed while drawing.
+        let fb = unsafe { Framebuffer::from_mut_slice(&mut bytes, 7, 7, 7, PixelFormat::Rgb) }.unwrap();
 
         erase_mouse_cursor(&fb);
         draw_mouse_cursor(&fb, 1, 1);

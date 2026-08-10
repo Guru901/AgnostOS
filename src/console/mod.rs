@@ -26,7 +26,7 @@ use crate::{
 /// Internal writer state. Holds everything needed to render text to the
 /// framebuffer and track terminal state across keystrokes.
 struct KWriter {
-    /// Raw framebuffer to draw into.
+    /// Internal framebuffer handle used to draw into the active display.
     fb: Framebuffer,
     /// Current cursor position in.
     column: usize,
@@ -81,10 +81,9 @@ fn font_w(size: RasterHeight) -> usize {
 /// Initializes the console with the given framebuffer.
 ///
 /// Must be called before any [`kprint!`] or [`kprintln!`] calls.
-/// Clones the framebuffer so the console owns its own copy of the
-/// raw pointer and dimensions.
+/// Creates the console's crate-private drawing handle.
 pub fn init(fb: &Framebuffer) {
-    let fb = fb.clone();
+    let fb = fb.duplicate_for_console();
     *KWRITER.lock() = Some(KWriter {
         fb,
         column: 0,
@@ -109,7 +108,7 @@ impl KWriter {
     /// Scrolls the framebuffer up if the cursor has reached the scroll
     /// threshold (3 lines from the bottom). Adjusts `self.y` accordingly.
     fn check_scroll(&mut self, fh: usize) {
-        let threshold = self.fb.height.saturating_sub(3 * fh);
+        let threshold = self.fb.height().saturating_sub(3 * fh);
         if self.y() >= threshold {
             let scroll_by = self.y() - threshold + fh;
             graphics::scroll_up(&self.fb, scroll_by);
@@ -123,7 +122,7 @@ impl fmt::Write for KWriter {
     /// and scrolling. Each completed line (terminated by `\n`) is pushed
     /// into `history`.
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        let width = self.fb.width;
+        let width = self.fb.width();
         let fh = font_h(self.font_size);
         let fw = font_w(self.font_size);
 
@@ -243,7 +242,7 @@ pub(crate) fn draw_cursor() {
         let fh = font_h(writer.font_size);
         let fw = font_w(writer.font_size);
 
-        if writer.fb.width < writer.x() + fw {
+        if writer.fb.width() < writer.x() + fw {
             writer.column = 0;
             writer.row += 1;
             writer.check_scroll(fh);
@@ -280,7 +279,7 @@ pub(crate) fn erase_cursor() {
 pub(crate) fn print_history() {
     if let Some(writer) = KWRITER.lock().as_mut() {
         let fh = font_h(writer.font_size);
-        let max_lines = writer.fb.height / fh;
+        let max_lines = writer.fb.height() / fh;
 
         // only render the tail of history that fits on screen
         let start = writer.history.len().saturating_sub(max_lines);
@@ -410,7 +409,7 @@ fn redraw_input_line(writer: &mut KWriter, text: &str) {
     graphics::draw_rec(
         &writer.fb,
         (0, writer.y()),
-        (writer.fb.width, fh),
+        (writer.fb.width(), fh),
         color::BLACK,
     );
 

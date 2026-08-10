@@ -7,18 +7,28 @@ use uefi::mem::memory_map::MemoryMap;
 
 use crate::{BOOT_SERVICES_EXITED, HEAP_SIZE, HEAP_START};
 
-/// Exits UEFI boot services and returns the largest conventional-memory range
+/// An exclusively owned conventional-memory range selected for the kernel heap.
+///
+/// Its address and length are deliberately kept private: only allocator setup
+/// code can turn this validated region into a raw allocation range.
+#[derive(Debug)]
+pub struct HeapRegion {
+    start: usize,
+    size: usize,
+}
+
+/// Exits UEFI boot services and returns the largest conventional-memory region
 /// for use as the kernel heap.
 ///
 /// # Safety
 /// This may only be called once, after all UEFI boot services have been used.
-/// The returned range is available for exclusive use by the allocator.
+/// The returned region is available for exclusive use by the allocator.
 ///
 /// # Panics
 ///
 /// 1. Will panic if the heap has already been initialised.
 /// 2. Will panic if the heap initialised with zero size.
-pub fn initialize_heap() -> (usize, usize) {
+pub fn initialize_heap() -> HeapRegion {
     assert!(
         HEAP_SIZE.load(Ordering::Relaxed) == 0,
         "Allocator already initialised"
@@ -57,7 +67,23 @@ pub fn initialize_heap() -> (usize, usize) {
     HEAP_START.store(heap_start, Ordering::Relaxed);
     HEAP_SIZE.store(heap_size, Ordering::Relaxed);
 
-    (heap_start, heap_size)
+    HeapRegion {
+        start: heap_start,
+        size: heap_size,
+    }
+}
+
+#[cfg(feature = "linked-list-allocator")]
+/// Initializes the linked-list allocator from an owned heap region.
+pub fn initialize_linked_list_allocator(
+    allocator: &linked_list_allocator::LockedHeap,
+    region: HeapRegion,
+) {
+    // SAFETY: `region` is consumed here and was selected as exclusively owned
+    // conventional memory by `initialize_heap`.
+    unsafe {
+        allocator.lock().init(region.start as *mut u8, region.size);
+    }
 }
 
 #[cfg(feature = "custom-allocator")]
@@ -123,7 +149,9 @@ impl AgnostOSAllocator {
     ///
     /// # Safety
     /// The heap must be exclusively owned by this allocator.
-    pub fn init(&self, heap_start: usize, heap_size: usize) {
+    pub fn init(&self, region: HeapRegion) {
+        let heap_start = region.start;
+        let heap_size = region.size;
         assert!(
             heap_size >= core::mem::size_of::<FreeChunk>(),
             "Heap is too small"
