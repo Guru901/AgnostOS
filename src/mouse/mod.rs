@@ -199,6 +199,8 @@ unsafe fn wait_write_ready() -> Result<(), Ps2Error> {
     // SAFETY: this helper is called only while communicating with the PS/2
     // controller, whose status register is at `PS2_STATUS`.
     for _ in 0..PS2_READY_POLL_LIMIT {
+        // SAFETY: controller setup serializes access, and `PS2_STATUS` is the
+        // readable legacy controller status port on the supported platform.
         if unsafe { inb(PS2_STATUS) } & 0b10 == 0 {
             return Ok(());
         }
@@ -210,6 +212,8 @@ unsafe fn wait_read_ready() -> Result<(), Ps2Error> {
     // SAFETY: this helper is called only while communicating with the PS/2
     // controller, whose status register is at `PS2_STATUS`.
     for _ in 0..PS2_READY_POLL_LIMIT {
+        // SAFETY: controller setup serializes access, and `PS2_STATUS` is the
+        // readable legacy controller status port on the supported platform.
         if unsafe { inb(PS2_STATUS) } & 0b01 != 0 {
             return Ok(());
         }
