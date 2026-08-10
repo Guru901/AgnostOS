@@ -17,6 +17,14 @@ pub struct HeapRegion {
     size: usize,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum HeapError {
+    AlreadyInitialized,
+    NoConventionalMemory,
+    TooSmall,
+    Misaligned,
+}
+
 /// Exits UEFI boot services and returns the largest conventional-memory region
 /// for use as the kernel heap.
 ///
@@ -24,15 +32,10 @@ pub struct HeapRegion {
 /// This may only be called once, after all UEFI boot services have been used.
 /// The returned region is available for exclusive use by the allocator.
 ///
-/// # Panics
-///
-/// 1. Will panic if the heap has already been initialised.
-/// 2. Will panic if the heap initialised with zero size.
-pub fn initialize_heap() -> HeapRegion {
-    assert!(
-        HEAP_SIZE.load(Ordering::Relaxed) == 0,
-        "Allocator already initialised"
-    );
+pub fn initialize_heap() -> Result<HeapRegion, HeapError> {
+    if HEAP_SIZE.load(Ordering::Relaxed) != 0 {
+        return Err(HeapError::AlreadyInitialized);
+    }
 
     // Exit boot services — after this point, no UEFI boot service calls are valid.
     // SAFETY: initialization is one-shot and the caller has finished using
@@ -61,16 +64,18 @@ pub fn initialize_heap() -> HeapRegion {
         }
     }
 
-    assert!(heap_size != 0, "Failed to initialise heap");
+    if heap_size == 0 {
+        return Err(HeapError::NoConventionalMemory);
+    }
 
     // Store heap info globally so commands like `meminfo` can read them.
     HEAP_START.store(heap_start, Ordering::Relaxed);
     HEAP_SIZE.store(heap_size, Ordering::Relaxed);
 
-    HeapRegion {
+    Ok(HeapRegion {
         start: heap_start,
         size: heap_size,
-    }
+    })
 }
 
 #[cfg(feature = "linked-list-allocator")]
@@ -143,24 +148,15 @@ impl AgnostOSAllocator {
 
     /// Initializes the allocator's free list with the supplied heap range.
     ///
-    /// # Panics
-    /// Will effectively hang/crash if no conventional memory is found,
-    /// since the allocator head remains null and any subsequent allocation
-    /// returns null.
-    ///
-    /// # Safety
-    /// The heap must be exclusively owned by this allocator.
-    pub fn init(&self, region: HeapRegion) {
+    pub fn init(&self, region: HeapRegion) -> Result<(), HeapError> {
         let heap_start = region.start;
         let heap_size = region.size;
-        assert!(
-            heap_size >= core::mem::size_of::<FreeChunk>(),
-            "Heap is too small"
-        );
-        assert!(
-            heap_start.is_multiple_of(core::mem::size_of::<FreeChunk>()),
-            "Heap is misaligned"
-        );
+        if heap_size < core::mem::size_of::<FreeChunk>() {
+            return Err(HeapError::TooSmall);
+        }
+        if !heap_start.is_multiple_of(core::mem::align_of::<FreeChunk>()) {
+            return Err(HeapError::Misaligned);
+        }
 
         // Write the initial FreeChunk header at the start of the heap region,
         // covering the entire heap as one large free chunk.
@@ -172,6 +168,7 @@ impl AgnostOSAllocator {
             (*chunk).next = core::ptr::null_mut();
             *self.head.lock() = chunk;
         }
+        Ok(())
     }
 }
 
