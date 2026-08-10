@@ -245,9 +245,12 @@ impl Framebuffer {
     }
 
     fn scroll_rows(&self, rows: usize) {
+        if !self.is_drawable() {
+            return;
+        }
         if rows >= self.height() {
-            // SAFETY: `is_drawable` is checked by the caller and validates the
-            // full framebuffer span before this raw operation.
+            // SAFETY: `is_drawable` above validates the full framebuffer span;
+            // `stride * height * 4` is therefore a valid writable byte range.
             unsafe {
                 core::ptr::write_bytes(self.ptr, 0, self.stride() * self.height() * 4);
             }
@@ -259,8 +262,8 @@ impl Framebuffer {
         let row_bytes = self.stride() * 4;
         let moved_bytes = (self.height() - rows) * row_bytes;
         let cleared_bytes = rows * row_bytes;
-        // SAFETY: `is_drawable` validates the full mapping. `copy` supports
-        // overlapping source and destination regions.
+        // SAFETY: `is_drawable` above validates the full mapping; the computed
+        // row ranges stay within it, and `copy` supports overlapping regions.
         unsafe {
             core::ptr::copy(self.ptr.add(rows * row_bytes), self.ptr, moved_bytes);
             core::ptr::write_bytes(self.ptr.add(moved_bytes), 0, cleared_bytes);

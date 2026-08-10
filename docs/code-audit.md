@@ -20,9 +20,6 @@ are confined to the framebuffer owner. However, the following call sites still
 need an immediately preceding justification that explains Rust's safety
 requirements, not merely the device protocol:
 
-- `src/graphics/mod.rs`: raw framebuffer reads, writes, and scroll operations
-  are contained, but each raw operation should explicitly tie pointer validity
-  and bounds to `is_drawable`/the constructor invariant.
 - `src/mouse/mod.rs`: the PS/2 readiness loops and I/O wrappers use unsafe port
   operations. Their surrounding safety contract is documented, but the inner
   `inb`/`outb` blocks do not all carry a local `SAFETY` explanation.
