@@ -369,7 +369,8 @@ pub fn draw_circle(fb: &Framebuffer, radius: usize, (cx, cy): (usize, usize), co
                 };
 
                 if pixel_x >= 0 && pixel_y >= 0 && pixel_x < width && pixel_y < height {
-                    let pixel_index = pixel_y.cast_unsigned() * fb.stride() + pixel_x.cast_unsigned();
+                    let pixel_index =
+                        pixel_y.cast_unsigned() * fb.stride() + pixel_x.cast_unsigned();
                     // SAFETY: `is_drawable` validates the backing range, and the
                     // preceding bounds check keeps the pixel in the framebuffer.
                     unsafe {
@@ -564,7 +565,8 @@ mod tests {
     fn draw_line_colors_every_pixel_on_a_horizontal_line() {
         let mut pixels = vec![0u8; 5 * 3 * 4];
         // SAFETY: `pixels` remains alive and is not otherwise accessed while drawing.
-        let fb = unsafe { Framebuffer::from_mut_slice(&mut pixels, 5, 3, 5, PixelFormat::Rgb) }.unwrap();
+        let fb =
+            unsafe { Framebuffer::from_mut_slice(&mut pixels, 5, 3, 5, PixelFormat::Rgb) }.unwrap();
 
         draw_line(&fb, (1, 1), (3, 1), Color::new(255, 0, 0));
 
@@ -580,7 +582,10 @@ mod tests {
         // SAFETY: the constructor only inspects `pixels` before rejecting it.
         let fb = unsafe { Framebuffer::from_mut_slice(&mut pixels, 1, 1, 1, PixelFormat::Rgb) };
 
-        assert!(matches!(fb, Err(FramebufferError::FramebufferTooSmall { .. })));
+        assert!(matches!(
+            fb,
+            Err(FramebufferError::FramebufferTooSmall { .. })
+        ));
         assert_eq!(&pixels, &[0x55, 0x55, 0x55]);
     }
 
@@ -590,6 +595,11 @@ mod tests {
         // SAFETY: the constructor only inspects `pixels` before rejecting it.
         let fb = unsafe { Framebuffer::from_mut_slice(&mut pixels, 1, 1, 1, PixelFormat::Bitmask) };
 
-        assert!(matches!(fb, Err(FramebufferError::UnsupportedPixelFormat(PixelFormat::Bitmask))));
+        assert!(matches!(
+            fb,
+            Err(FramebufferError::UnsupportedPixelFormat(
+                PixelFormat::Bitmask
+            ))
+        ));
     }
 }
