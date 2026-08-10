@@ -1,3 +1,4 @@
+use crate::platform::ring_buffer::RingBuffer;
 use crate::{
     color::{self, Color},
     graphics::{self, Framebuffer, PixelCoord, PixelSize},
@@ -40,7 +41,7 @@ pub(crate) fn draw_mouse_cursor(fb: &Framebuffer, origin: PixelCoord) {
             // SAFETY: the cursor rectangle was checked to fit in this drawable
             // framebuffer, and `read_pixel` rechecks its byte offset.
             cursor.saved_under[row * MOUSE_CURSOR_SIZE.width() + col] =
-                unsafe { fb.read_pixel(x + col, y + row) };
+                fb.read_pixel(x + col, y + row);
         }
     }
 
@@ -53,14 +54,10 @@ pub(crate) fn erase_mouse_cursor(fb: &Framebuffer) {
     if let Some((x, y)) = cursor.position.take() {
         for row in 0..MOUSE_CURSOR_SIZE.height() {
             for col in 0..MOUSE_CURSOR_SIZE.width() {
-                // SAFETY: `write_pixel` validates the computed pixel range before
-                // performing its raw framebuffer write.
-                unsafe {
-                    fb.write_pixel(
-                        (y + row) * fb.stride() + (x + col),
-                        &cursor.saved_under[row * MOUSE_CURSOR_SIZE.width() + col],
-                    )
-                };
+                fb.write_pixel(
+                    (y + row) * fb.stride() + (x + col),
+                    &cursor.saved_under[row * MOUSE_CURSOR_SIZE.width() + col],
+                );
             }
         }
     }
@@ -99,42 +96,7 @@ mod tests {
     }
 }
 
-pub(crate) struct MouseQueue {
-    buf: [u8; 256],
-    head: usize,
-    tail: usize,
-}
-
-pub(crate) static MOUSE_QUEUE: Mutex<MouseQueue> = Mutex::new(MouseQueue::new());
-
-impl MouseQueue {
-    const fn new() -> Self {
-        Self {
-            buf: [0; 256],
-            head: 0,
-            tail: 0,
-        }
-    }
-
-    pub(crate) fn push(&mut self, byte: u8) {
-        let next = (self.tail + 1) % self.buf.len();
-        // Queue full
-        if next == self.head {
-            return;
-        }
-        self.buf[self.tail] = byte;
-        self.tail = next;
-    }
-
-    pub(crate) fn pop(&mut self) -> Option<u8> {
-        if self.head == self.tail {
-            return None;
-        }
-        let byte = self.buf[self.head];
-        self.head = (self.head + 1) % self.buf.len();
-        Some(byte)
-    }
-}
+pub(crate) static MOUSE_QUEUE: Mutex<RingBuffer<u8, 256>> = Mutex::new(RingBuffer::new());
 
 struct PacketState {
     bytes: [u8; 3],

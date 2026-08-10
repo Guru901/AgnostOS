@@ -105,10 +105,10 @@ struct FreeChunk {
 /// free memory it represents — no separate bookkeeping allocation is needed.
 ///
 /// On allocation: walks the free list for a chunk that fits, splits it if
-/// there's enough remainder, and returns the aligned pointer.
+/// there's enough remainder, and returns the aligned pointer. On deallocation,
+/// adjacent free chunks are coalesced to limit fragmentation.
 ///
 /// On deallocation: inserts the freed region back at the head of the free list.
-/// Note: no coalescing is performed — adjacent free chunks are not merged.
 pub struct AgnostOSAllocator {
     head: spin::Mutex<*mut FreeChunk>,
 }

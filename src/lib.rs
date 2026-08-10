@@ -7,6 +7,7 @@ pub mod allocator;
 
 pub(crate) mod constants;
 pub(crate) use constants::*;
+pub(crate) mod platform;
 
 /// Returns whether the UEFI boot-services transition has completed.
 #[must_use]

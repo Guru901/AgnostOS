@@ -172,11 +172,8 @@ impl Framebuffer {
 
     #[inline]
     #[cfg(feature = "mouse")]
-    /// # Safety
-    ///
-    /// `self` must retain a valid framebuffer mapping for the duration of this
-    /// call. Callers must also prevent concurrent non-atomic access to it.
-    pub(crate) unsafe fn read_pixel(&self, x: usize, y: usize) -> Color {
+    /// Reads a pixel after validating its coordinates and byte range.
+    pub(crate) fn read_pixel(&self, x: usize, y: usize) -> Color {
         use crate::color;
         if !self.is_drawable() || x >= self.size.width() || y >= self.size.height() {
             return color::BLACK;
@@ -218,11 +215,8 @@ impl Framebuffer {
     }
 
     #[inline]
-    /// # Safety
-    ///
-    /// `self` must retain a valid framebuffer mapping for the duration of this
-    /// call. Callers must also prevent concurrent non-atomic access to it.
-    pub(crate) unsafe fn write_pixel(&self, pixel_index: usize, color: &Color) -> bool {
+    /// Writes a pixel after validating its byte range.
+    pub(crate) fn write_pixel(&self, pixel_index: usize, color: &Color) -> bool {
         let rgb = match self.pixel_format {
             PixelFormat::Bgr => [color.b, color.g, color.r],
             PixelFormat::Rgb => [color.r, color.g, color.b],
@@ -249,6 +243,29 @@ impl Framebuffer {
         }
         true
     }
+
+    fn scroll_rows(&self, rows: usize) {
+        if rows >= self.height() {
+            // SAFETY: `is_drawable` is checked by the caller and validates the
+            // full framebuffer span before this raw operation.
+            unsafe {
+                core::ptr::write_bytes(self.ptr, 0, self.stride() * self.height() * 4);
+            }
+            return;
+        }
+        if rows == 0 {
+            return;
+        }
+        let row_bytes = self.stride() * 4;
+        let moved_bytes = (self.height() - rows) * row_bytes;
+        let cleared_bytes = rows * row_bytes;
+        // SAFETY: `is_drawable` validates the full mapping. `copy` supports
+        // overlapping source and destination regions.
+        unsafe {
+            core::ptr::copy(self.ptr.add(rows * row_bytes), self.ptr, moved_bytes);
+            core::ptr::write_bytes(self.ptr.add(moved_bytes), 0, cleared_bytes);
+        }
+    }
 }
 
 /// Clears the background with the given color
@@ -270,7 +287,7 @@ pub fn clear_background(fb: &Framebuffer, color: &Color) {
             let pixel_index = row * fb.stride() + col;
             // SAFETY: `is_drawable` validates the backing range, and `row` and
             // `col` are bounded by the framebuffer dimensions.
-            unsafe { fb.write_pixel(pixel_index, color) };
+            fb.write_pixel(pixel_index, color);
         }
     }
 }
@@ -312,7 +329,7 @@ pub fn draw_rec(fb: &Framebuffer, origin: PixelCoord, size: PixelSize, color: Co
             let pixel_index = row * fb.stride() + col;
             // SAFETY: `is_drawable` validates the backing range, and the coordinate
             // assertions above keep this pixel in bounds.
-            unsafe { fb.write_pixel(pixel_index, &color) };
+            fb.write_pixel(pixel_index, &color);
         }
     }
 }
@@ -366,9 +383,7 @@ pub fn draw_circle(fb: &Framebuffer, radius: PixelRadius, center: PixelCoord, co
                         pixel_y.cast_unsigned() * fb.stride() + pixel_x.cast_unsigned();
                     // SAFETY: `is_drawable` validates the backing range, and the
                     // preceding bounds check keeps the pixel in the framebuffer.
-                    unsafe {
-                        fb.write_pixel(pixel_index, &color);
-                    }
+                    fb.write_pixel(pixel_index, &color);
                 }
             }
         }
@@ -419,9 +434,7 @@ pub fn draw_line(fb: &Framebuffer, start: PixelCoord, end: PixelCoord, color: Co
             let pixel_index = row * fb.stride() + column;
             // SAFETY: `is_drawable` validates the backing range, and the bounds
             // check above keeps `(x, y)` in the framebuffer.
-            unsafe {
-                fb.write_pixel(pixel_index, &color);
-            }
+            fb.write_pixel(pixel_index, &color);
         }
 
         if x == x2 && y == y2 {
@@ -462,28 +475,7 @@ pub fn scroll_up(fb: &Framebuffer, rows: PixelRows) {
     if !fb.is_drawable() {
         return;
     }
-    if rows >= fb.height() {
-        // SAFETY: `is_drawable` verifies the entire framebuffer span is valid.
-        unsafe {
-            core::ptr::write_bytes(fb.ptr, 0, fb.stride() * fb.height() * 4);
-        }
-        return;
-    }
-    if rows == 0 {
-        return;
-    }
-
-    let row_bytes = fb.stride() * 4;
-    let moved_bytes = (fb.height() - rows) * row_bytes;
-    let cleared_bytes = rows * row_bytes;
-
-    // SAFETY: `is_drawable` verifies the whole `stride * height * 4` byte
-    // region is valid. `copy` has memmove semantics, which safely handles the
-    // overlapping source and destination ranges.
-    unsafe {
-        core::ptr::copy(fb.ptr.add(rows * row_bytes), fb.ptr, moved_bytes);
-        core::ptr::write_bytes(fb.ptr.add(moved_bytes), 0, cleared_bytes);
-    }
+    fb.scroll_rows(rows);
 }
 
 /// Renders the provided text on the screen, at the provided coordinates with the provided color and font.
@@ -563,7 +555,7 @@ fn draw_glyph(
             let pixel_index = pixel_y * fb.stride() + pixel_x;
             // SAFETY: `is_drawable` validates the backing range, and out-of-bounds
             // glyph pixels are skipped immediately above.
-            unsafe { fb.write_pixel(pixel_index, &Color::new(red, green, blue)) };
+            fb.write_pixel(pixel_index, &Color::new(red, green, blue));
         }
     }
 }

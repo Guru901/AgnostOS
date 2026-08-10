@@ -1,21 +1,8 @@
+use crate::platform::ring_buffer::RingBuffer;
 use pc_keyboard::{
     DecodedKey, HandleControl, KeyCode, KeyState, PS2Keyboard, ScancodeSet1, layouts,
 };
 use spin::Mutex;
-
-pub(crate) struct KeyboardQueue {
-    buf: [u8; 256],
-    head: usize,
-    tail: usize,
-}
-
-impl Default for KeyboardQueue {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-pub(crate) static KEYBOARD_QUEUE: Mutex<KeyboardQueue> = Mutex::new(KeyboardQueue::new());
 
 #[derive(Clone, Copy)]
 pub(crate) struct Scancode(u8);
@@ -32,39 +19,7 @@ impl Scancode {
     }
 }
 
-impl KeyboardQueue {
-    #[must_use]
-    pub(crate) const fn new() -> Self {
-        Self {
-            buf: [0; 256],
-            head: 0,
-            tail: 0,
-        }
-    }
-
-    pub(crate) fn push(&mut self, scancode: Scancode) {
-        let next = (self.tail + 1) % self.buf.len();
-
-        // Queue full
-        if next == self.head {
-            return;
-        }
-
-        self.buf[self.tail] = scancode.get();
-        self.tail = next;
-    }
-
-    pub(crate) fn pop(&mut self) -> Option<Scancode> {
-        if self.head == self.tail {
-            return None;
-        }
-
-        let scancode = self.buf[self.head];
-        self.head = (self.head + 1) % self.buf.len();
-
-        Some(Scancode::new(scancode))
-    }
-}
+pub(crate) static KEYBOARD_QUEUE: Mutex<RingBuffer<Scancode, 256>> = Mutex::new(RingBuffer::new());
 
 static KEYBOARD: Mutex<PS2Keyboard<layouts::Us104Key, ScancodeSet1>> =
     Mutex::new(PS2Keyboard::new(
