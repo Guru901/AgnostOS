@@ -83,3 +83,18 @@ fn scrolling_past_the_framebuffer_clears_it() {
 
     assert!(bytes.iter().all(|&byte| byte == 0));
 }
+
+#[test]
+fn out_of_bounds_rectangle_is_a_no_op() {
+    let mut bytes = vec![0xAA; 2 * 2 * 4];
+    let fb = framebuffer(&mut bytes, 2, 2);
+
+    graphics::draw_rec(
+        &fb,
+        PixelCoord::new(1, 1),
+        PixelSize::new(2, 2),
+        Color::new(255, 0, 0),
+    );
+
+    assert!(bytes.iter().all(|&byte| byte == 0xAA));
+}

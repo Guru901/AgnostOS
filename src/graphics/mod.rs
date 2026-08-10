@@ -297,10 +297,8 @@ pub fn clear_background(fb: &Framebuffer, color: &Color) {
 ///
 /// # Panics
 ///
-/// Panics when a non-overflowing rectangle extends past the framebuffer's
-/// right or bottom edge.
-///
-/// Returns without drawing when an extent calculation overflows.
+/// Returns without drawing when the rectangle overflows or extends past the
+/// framebuffer's right or bottom edge.
 ///
 /// **Example**
 ///
@@ -321,14 +319,15 @@ pub fn draw_rec(fb: &Framebuffer, origin: PixelCoord, size: PixelSize, color: Co
     let Some(y2) = y.checked_add(h) else {
         return;
     };
-    assert!(x2 <= fb.width(), "Bad X coordinate");
-    assert!(y2 <= fb.height(), "Bad Y coordinate");
+    if x2 > fb.width() || y2 > fb.height() {
+        return;
+    }
 
     for row in y..y2 {
         for col in x..x2 {
             let pixel_index = row * fb.stride() + col;
             // SAFETY: `is_drawable` validates the backing range, and the coordinate
-            // assertions above keep this pixel in bounds.
+            // preceding bounds check keeps this pixel in bounds.
             fb.write_pixel(pixel_index, &color);
         }
     }

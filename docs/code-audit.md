@@ -44,10 +44,6 @@ requirements, not merely the device protocol:
   initialization, missing conventional memory, and invalid heap geometry.
   These are not recoverable after boot-services exit, but should follow a
   deliberate fatal policy rather than panic unwinding/assertion behaviour.
-- `src/graphics/mod.rs`: `draw_rec` still asserts when a non-overflowing
-  rectangle crosses framebuffer bounds, while overflow is treated as a no-op.
-  The API needs one consistent policy: clip, return `DrawError`, or reject
-  without panicking.
 - `src/idt/mod.rs`: the double-fault handler calls `panic!`, which can re-enter
   code that depends on a working stack, console, or allocator. It needs a
   minimal allocation-free halt/report path.
