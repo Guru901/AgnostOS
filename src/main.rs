@@ -26,9 +26,14 @@ pub static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 #[entry]
 fn main() -> Status {
-    uefi::helpers::init().unwrap();
+    if let Err(error) = uefi::helpers::init() {
+        return error.status();
+    }
 
-    let mut gop = uefi_graphics::init_gop();
+    let mut gop = match uefi_graphics::init_gop() {
+        Ok(gop) => gop,
+        Err(error) => return error.status(),
+    };
     let fb = match Framebuffer::new(&mut gop) {
         Ok(fb) => fb,
         Err(error) => {
@@ -40,10 +45,15 @@ fn main() -> Status {
     console::init(fb);
     uefi::println!("Exiting boot services in 1 seconds...");
 
-    let heap_region = allocator::initialize_heap();
+    let heap_region = match allocator::initialize_heap() {
+        Ok(region) => region,
+        Err(error) => fatal_after_boot("heap initialization failed", error),
+    };
 
     #[cfg(feature = "custom-allocator")]
-    ALLOCATOR.init(heap_region);
+    if let Err(error) = ALLOCATOR.init(heap_region) {
+        fatal_after_boot("custom allocator initialization failed", error);
+    }
 
     #[cfg(not(feature = "custom-allocator"))]
     allocator::initialize_linked_list_allocator(&ALLOCATOR, heap_region);
@@ -52,6 +62,13 @@ fn main() -> Status {
     x86_64::instructions::interrupts::enable();
 
     shell::init()
+}
+
+fn fatal_after_boot(message: &str, detail: impl core::fmt::Debug) -> ! {
+    kprintln!("FATAL: {message}: {detail:?}");
+    loop {
+        x86_64::instructions::hlt();
+    }
 }
 
 #[panic_handler]
