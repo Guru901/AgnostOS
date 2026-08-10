@@ -3,7 +3,7 @@ use pc_keyboard::{
 };
 use spin::Mutex;
 
-pub struct KeyboardQueue {
+pub(crate) struct KeyboardQueue {
     buf: [u8; 256],
     head: usize,
     tail: usize,
@@ -15,10 +15,26 @@ impl Default for KeyboardQueue {
     }
 }
 
-pub static KEYBOARD_QUEUE: Mutex<KeyboardQueue> = Mutex::new(KeyboardQueue::new());
+pub(crate) static KEYBOARD_QUEUE: Mutex<KeyboardQueue> = Mutex::new(KeyboardQueue::new());
+
+#[derive(Clone, Copy)]
+pub(crate) struct Scancode(u8);
+
+impl Scancode {
+    #[must_use]
+    pub(crate) const fn new(value: u8) -> Self {
+        Self(value)
+    }
+
+    #[must_use]
+    const fn get(self) -> u8 {
+        self.0
+    }
+}
 
 impl KeyboardQueue {
-    pub const fn new() -> Self {
+    #[must_use]
+    pub(crate) const fn new() -> Self {
         Self {
             buf: [0; 256],
             head: 0,
@@ -26,7 +42,7 @@ impl KeyboardQueue {
         }
     }
 
-    pub fn push(&mut self, scancode: u8) {
+    pub(crate) fn push(&mut self, scancode: Scancode) {
         let next = (self.tail + 1) % self.buf.len();
 
         // Queue full
@@ -34,11 +50,11 @@ impl KeyboardQueue {
             return;
         }
 
-        self.buf[self.tail] = scancode;
+        self.buf[self.tail] = scancode.get();
         self.tail = next;
     }
 
-    pub fn pop(&mut self) -> Option<u8> {
+    pub(crate) fn pop(&mut self) -> Option<Scancode> {
         if self.head == self.tail {
             return None;
         }
@@ -46,7 +62,7 @@ impl KeyboardQueue {
         let scancode = self.buf[self.head];
         self.head = (self.head + 1) % self.buf.len();
 
-        Some(scancode)
+        Some(Scancode::new(scancode))
     }
 }
 
@@ -61,7 +77,7 @@ static KEYBOARD: Mutex<PS2Keyboard<layouts::Us104Key, ScancodeSet1>> =
 // access is needed. Revisit if a handler ever reads or writes it.
 static CTRL_HELD: Mutex<bool> = Mutex::new(false);
 
-pub enum KeyboardEvent {
+pub(crate) enum KeyboardEvent {
     Char(char),
     CtrlC,
     ZoomIn,
@@ -71,7 +87,7 @@ pub enum KeyboardEvent {
     CtrlL,
 }
 
-pub fn poll() -> Option<KeyboardEvent> {
+pub(crate) fn poll() -> Option<KeyboardEvent> {
     // An IRQ can preempt this code. Disable interrupts while holding the queue
     // lock so the handler never spins waiting for the interrupted code to unlock it.
     let scancode =
@@ -79,7 +95,7 @@ pub fn poll() -> Option<KeyboardEvent> {
 
     let mut kb = KEYBOARD.lock();
 
-    let key_event = kb.add_byte(scancode).ok()??;
+    let key_event = kb.add_byte(scancode.get()).ok()??;
     match key_event.code {
         KeyCode::LControl | KeyCode::RControl => {
             *CTRL_HELD.lock() = key_event.state == KeyState::Down;

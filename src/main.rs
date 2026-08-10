@@ -4,7 +4,7 @@
 extern crate alloc;
 
 use agnostos::{
-    BOOT_SERVICES_EXITED, allocator, console, graphics::Framebuffer, idt, kprintln, shell,
+    allocator, boot_services_exited, console, graphics::Framebuffer, idt, kprintln, shell,
     uefi_graphics,
 };
 
@@ -56,7 +56,7 @@ fn main() -> Status {
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    if BOOT_SERVICES_EXITED.load(core::sync::atomic::Ordering::Relaxed) {
+    if boot_services_exited() {
         kprintln!("========================================");
         kprintln!("              KERNEL PANIC");
         kprintln!("========================================");

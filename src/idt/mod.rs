@@ -4,7 +4,7 @@ use x86_64::{
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame},
 };
 
-use crate::keyboard::KEYBOARD_QUEUE;
+use crate::keyboard::{KEYBOARD_QUEUE, Scancode};
 use crate::kprintln;
 #[cfg(feature = "mouse")]
 use crate::mouse::{MOUSE_QUEUE, ps2_write_data};
@@ -177,7 +177,7 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
     let code = unsafe { inb(PS2_DATA) };
 
     x86_64::instructions::interrupts::without_interrupts(|| {
-        KEYBOARD_QUEUE.lock().push(code);
+        KEYBOARD_QUEUE.lock().push(Scancode::new(code));
     });
 
     // SAFETY: PIC1 was initialized during `init`; `0x20` is its EOI command.

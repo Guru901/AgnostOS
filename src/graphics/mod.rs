@@ -4,26 +4,50 @@ use alloc::vec;
 use noto_sans_mono_bitmap::{RasterHeight, RasterizedChar, get_raster};
 use uefi::proto::console::gop::{GraphicsOutput, PixelFormat};
 
-use crate::{FONT_HEIGHT, FONT_WEIGHT, color::Color};
+use crate::{
+    FONT_HEIGHT, FONT_WEIGHT,
+    color::Color,
+    graphics::pixel::{PixelCoord, PixelRadius, PixelRows, PixelSize, Stride},
+};
+
+pub mod pixel;
+
+/// A count of bytes in a framebuffer mapping.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
+pub struct FramebufferBytes(usize);
+
+impl FramebufferBytes {
+    #[must_use]
+    pub const fn new(value: usize) -> Self {
+        Self(value)
+    }
+
+    #[must_use]
+    pub(crate) const fn get(self) -> usize {
+        self.0
+    }
+}
 
 #[derive(Debug)]
 pub struct Framebuffer {
     ptr: *mut u8,
-    width: usize,
-    height: usize,
-    stride: usize,
+    size: PixelSize,
+    stride: Stride,
     /// Pixel layout selected by GOP. Direct rendering supports only `Rgb` and
     /// `Bgr`, both of which are 32-bit formats.
     pixel_format: PixelFormat,
     /// Number of bytes reported by GOP for the framebuffer mapping.
-    byte_len: usize,
+    byte_len: FramebufferBytes,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum FramebufferError {
     UnsupportedPixelFormat(PixelFormat),
     InvalidGeometry,
-    FramebufferTooSmall { required: usize, actual: usize },
+    FramebufferTooSmall {
+        required: FramebufferBytes,
+        actual: FramebufferBytes,
+    },
 }
 
 impl Framebuffer {
@@ -36,17 +60,19 @@ impl Framebuffer {
     pub fn new(gop: &mut GraphicsOutput) -> Result<Self, FramebufferError> {
         let mode_info = gop.current_mode_info();
         let (width, height) = mode_info.resolution();
-        let stride = mode_info.stride();
+        let size = PixelSize::try_new(width, height).ok_or(FramebufferError::InvalidGeometry)?;
+        let stride =
+            Stride::try_new(mode_info.stride()).ok_or(FramebufferError::InvalidGeometry)?;
         let pixel_format = mode_info.pixel_format();
 
         if !matches!(pixel_format, PixelFormat::Rgb | PixelFormat::Bgr) {
             return Err(FramebufferError::UnsupportedPixelFormat(pixel_format));
         }
 
-        let required = Self::required_byte_len(width, height, stride)
-            .ok_or(FramebufferError::InvalidGeometry)?;
+        let required =
+            Self::required_byte_len(size, stride).ok_or(FramebufferError::InvalidGeometry)?;
         let mut framebuffer = gop.frame_buffer();
-        let byte_len = framebuffer.size();
+        let byte_len = FramebufferBytes::new(framebuffer.size());
         if byte_len < required {
             return Err(FramebufferError::FramebufferTooSmall {
                 required,
@@ -56,8 +82,7 @@ impl Framebuffer {
 
         Ok(Self {
             ptr: framebuffer.as_mut_ptr(),
-            width,
-            height,
+            size,
             stride,
             pixel_format,
             byte_len,
@@ -83,49 +108,52 @@ impl Framebuffer {
     #[doc(hidden)]
     pub unsafe fn from_mut_slice(
         bytes: &mut [u8],
-        width: usize,
-        height: usize,
-        stride: usize,
+        size: PixelSize,
+        stride: Stride,
         pixel_format: PixelFormat,
     ) -> Result<Self, FramebufferError> {
         if !matches!(pixel_format, PixelFormat::Rgb | PixelFormat::Bgr) {
             return Err(FramebufferError::UnsupportedPixelFormat(pixel_format));
         }
-        let required = Self::required_byte_len(width, height, stride)
-            .ok_or(FramebufferError::InvalidGeometry)?;
-        if bytes.len() < required {
+        let required =
+            Self::required_byte_len(size, stride).ok_or(FramebufferError::InvalidGeometry)?;
+        let byte_len = FramebufferBytes::new(bytes.len());
+        if byte_len < required {
             return Err(FramebufferError::FramebufferTooSmall {
                 required,
-                actual: bytes.len(),
+                actual: byte_len,
             });
         }
 
         Ok(Self {
             ptr: bytes.as_mut_ptr(),
-            width,
-            height,
+            size,
             stride,
             pixel_format,
-            byte_len: bytes.len(),
+            byte_len,
         })
     }
 
     /// Width of the visible framebuffer, in pixels.
     #[must_use]
-    pub const fn width(&self) -> usize {
-        self.width
+    pub const fn size(&self) -> PixelSize {
+        self.size
     }
 
     /// Height of the visible framebuffer, in pixels.
     #[must_use]
-    pub const fn height(&self) -> usize {
-        self.height
+    pub const fn row_stride(&self) -> Stride {
+        self.stride
     }
 
-    /// Number of pixels between the starts of two consecutive rows.
-    #[must_use]
-    pub const fn stride(&self) -> usize {
-        self.stride
+    pub(crate) const fn width(&self) -> usize {
+        self.size.width()
+    }
+    pub(crate) const fn height(&self) -> usize {
+        self.size.height()
+    }
+    pub(crate) const fn stride(&self) -> usize {
+        self.stride.get()
     }
 
     /// Creates the second internal handle needed by the console writer.
@@ -136,8 +164,7 @@ impl Framebuffer {
     pub(crate) fn duplicate_for_console(&self) -> Self {
         Self {
             ptr: self.ptr,
-            width: self.width,
-            height: self.height,
+            size: self.size,
             stride: self.stride,
             pixel_format: self.pixel_format,
             byte_len: self.byte_len,
@@ -157,20 +184,21 @@ impl Framebuffer {
 
         Self {
             ptr: pixels.as_mut_ptr(),
-            width: WIDTH,
-            height: HEIGHT,
-            stride: WIDTH,
+            size: PixelSize::new(WIDTH, HEIGHT),
+            stride: Stride::new(WIDTH),
             pixel_format: PixelFormat::Bgr,
-            byte_len: WIDTH * HEIGHT * 4,
+            byte_len: FramebufferBytes::new(WIDTH * HEIGHT * 4),
         }
     }
 
-    fn required_byte_len(width: usize, height: usize, stride: usize) -> Option<usize> {
-        if width > stride {
+    fn required_byte_len(size: PixelSize, stride: Stride) -> Option<FramebufferBytes> {
+        if size.width() > stride.get() {
             return None;
         }
 
-        stride.checked_mul(height)?.checked_mul(4)
+        Some(FramebufferBytes::new(
+            stride.get().checked_mul(size.height())?.checked_mul(4)?,
+        ))
     }
 
     /// Returns whether this framebuffer is suitable for direct 32-bit drawing.
@@ -179,7 +207,7 @@ impl Framebuffer {
     pub fn is_drawable(&self) -> bool {
         !self.ptr.is_null()
             && matches!(self.pixel_format, PixelFormat::Rgb | PixelFormat::Bgr)
-            && Self::required_byte_len(self.width, self.height, self.stride)
+            && Self::required_byte_len(self.size, self.stride)
                 .is_some_and(|required| required <= self.byte_len)
     }
 
@@ -191,12 +219,12 @@ impl Framebuffer {
     /// call. Callers must also prevent concurrent non-atomic access to it.
     pub(crate) unsafe fn read_pixel(&self, x: usize, y: usize) -> Color {
         use crate::color;
-        if !self.is_drawable() || x >= self.width || y >= self.height {
+        if !self.is_drawable() || x >= self.size.width() || y >= self.size.height() {
             return color::BLACK;
         }
 
         let Some(pixel_index) = y
-            .checked_mul(self.stride)
+            .checked_mul(self.stride.get())
             .and_then(|row| row.checked_add(x))
         else {
             return color::BLACK;
@@ -204,7 +232,10 @@ impl Framebuffer {
         let Some(offset) = pixel_index.checked_mul(4) else {
             return color::BLACK;
         };
-        if offset.checked_add(4).is_none_or(|end| end > self.byte_len) {
+        if offset
+            .checked_add(4)
+            .is_none_or(|end| end > self.byte_len.get())
+        {
             return color::BLACK;
         }
 
@@ -241,7 +272,10 @@ impl Framebuffer {
         let Some(offset) = pixel_index.checked_mul(4) else {
             return false;
         };
-        if offset.checked_add(4).is_none_or(|end| end > self.byte_len) {
+        if offset
+            .checked_add(4)
+            .is_none_or(|end| end > self.byte_len.get())
+        {
             return false;
         }
         // SAFETY: the checked offset identifies a complete 32-bit pixel within
@@ -299,9 +333,11 @@ pub fn clear_background(fb: &Framebuffer, color: &Color) {
 /// use agnostos::color::Color;
 /// use agnostos::graphics::Framebuffer;
 /// # let fb = Framebuffer::for_doc_test();
-/// agnostos::graphics::draw_rec(&fb, (100, 100), (100, 100), Color { r: 0, g: 0, b: 0 });
+/// agnostos::graphics::draw_rec(&fb, PixelCoord::new(100, 100), PixelSize::new(100, 100), Color { r: 0, g: 0, b: 0 });
 /// ```
-pub fn draw_rec(fb: &Framebuffer, (x, y): (usize, usize), (w, h): (usize, usize), color: Color) {
+pub fn draw_rec(fb: &Framebuffer, origin: PixelCoord, size: PixelSize, color: Color) {
+    let (x, y) = (origin.x(), origin.y());
+    let (w, h) = (size.width(), size.height());
     if !fb.is_drawable() {
         return;
     }
@@ -332,15 +368,16 @@ pub fn draw_rec(fb: &Framebuffer, (x, y): (usize, usize), (w, h): (usize, usize)
 /// use agnostos::color::Color;
 /// use agnostos::graphics::Framebuffer;
 /// # let fb = Framebuffer::for_doc_test();
-/// agnostos::graphics::draw_circle(&fb, 20, (100, 100), Color { r: 0, g: 0, b: 0 });
+/// agnostos::graphics::draw_circle(&fb, PixelRadius::new(20), PixelCoord::new(100, 100), Color { r: 0, g: 0, b: 0 });
 /// ```
-pub fn draw_circle(fb: &Framebuffer, radius: usize, (cx, cy): (usize, usize), color: Color) {
+pub fn draw_circle(fb: &Framebuffer, radius: PixelRadius, center: PixelCoord, color: Color) {
+    let (cx, cy) = (center.x(), center.y());
     if !fb.is_drawable() {
         return;
     }
 
     let (Ok(radius), Ok(center_x), Ok(center_y), Ok(width), Ok(height)) = (
-        isize::try_from(radius),
+        isize::try_from(radius.get()),
         isize::try_from(cx),
         isize::try_from(cy),
         isize::try_from(fb.width()),
@@ -390,14 +427,21 @@ pub fn draw_circle(fb: &Framebuffer, radius: usize, (cx, cy): (usize, usize), co
 /// use agnostos::color::Color;
 /// use agnostos::graphics::Framebuffer;
 /// # let fb = Framebuffer::for_doc_test();
-/// agnostos::graphics::draw_line(&fb, (100, 100), (100, 100), Color { r: 0, g: 0, b: 0 });
+/// agnostos::graphics::draw_line(&fb, PixelCoord::new(100, 100), PixelCoord::new(100, 100), Color { r: 0, g: 0, b: 0 });
 /// ```
-pub fn draw_line(fb: &Framebuffer, (x1, y1): (i64, i64), (x2, y2): (i64, i64), color: Color) {
+pub fn draw_line(fb: &Framebuffer, start: PixelCoord, end: PixelCoord, color: Color) {
     if !fb.is_drawable() {
         return;
     }
 
-    let (Ok(width), Ok(height)) = (i64::try_from(fb.width()), i64::try_from(fb.height())) else {
+    let (Ok(width), Ok(height), Ok(x1), Ok(y1), Ok(x2), Ok(y2)) = (
+        i64::try_from(fb.width()),
+        i64::try_from(fb.height()),
+        i64::try_from(start.x()),
+        i64::try_from(start.y()),
+        i64::try_from(end.x()),
+        i64::try_from(end.y()),
+    ) else {
         return;
     };
     let delta_x = (x2 - x1).abs();
@@ -440,7 +484,8 @@ pub fn draw_line(fb: &Framebuffer, (x1, y1): (i64, i64), (x2, y2): (i64, i64), c
 }
 
 /// Scrolls the framebuffer content up by `rows` pixel rows, clearing the freed strip at the bottom.
-pub fn scroll_up(fb: &Framebuffer, rows: usize) {
+pub fn scroll_up(fb: &Framebuffer, rows: PixelRows) {
+    let rows = rows.get();
     if !fb.is_drawable() {
         return;
     }
@@ -476,12 +521,12 @@ pub fn scroll_up(fb: &Framebuffer, rows: usize) {
 /// use agnostos::color::Color;
 /// use agnostos::graphics::Framebuffer;
 /// # let fb = Framebuffer::for_doc_test();
-/// agnostos::graphics::draw_text(&fb, "Random text to render", (100, 200), Color { r: 0, g: 0, b: 0 }, None);
+/// agnostos::graphics::draw_text(&fb, "Random text to render", PixelCoord::new(100, 200), Color { r: 0, g: 0, b: 0 }, None);
 /// ```
 pub fn draw_text(
     fb: &Framebuffer,
     text: &str,
-    (x, y): (usize, usize),
+    origin: PixelCoord,
     color: Color,
     font_height: Option<RasterHeight>,
 ) {
@@ -489,7 +534,8 @@ pub fn draw_text(
         return;
     }
 
-    let mut cursor_x = x;
+    let mut cursor_x = origin.x();
+    let y = origin.y();
 
     for ch in text.chars() {
         if ch == '\n' {
@@ -565,10 +611,22 @@ mod tests {
     fn draw_line_colors_every_pixel_on_a_horizontal_line() {
         let mut pixels = vec![0u8; 5 * 3 * 4];
         // SAFETY: `pixels` remains alive and is not otherwise accessed while drawing.
-        let fb =
-            unsafe { Framebuffer::from_mut_slice(&mut pixels, 5, 3, 5, PixelFormat::Rgb) }.unwrap();
+        let fb = unsafe {
+            Framebuffer::from_mut_slice(
+                &mut pixels,
+                PixelSize::new(5, 3),
+                Stride::new(5),
+                PixelFormat::Rgb,
+            )
+        }
+        .unwrap();
 
-        draw_line(&fb, (1, 1), (3, 1), Color::new(255, 0, 0));
+        draw_line(
+            &fb,
+            PixelCoord::new(1, 1),
+            PixelCoord::new(3, 1),
+            Color::new(255, 0, 0),
+        );
 
         for x in 1..=3 {
             let offset = (fb.stride() + x) * 4;
@@ -580,7 +638,14 @@ mod tests {
     fn too_small_framebuffer_is_rejected() {
         let mut pixels = vec![0x55u8; 3];
         // SAFETY: the constructor only inspects `pixels` before rejecting it.
-        let fb = unsafe { Framebuffer::from_mut_slice(&mut pixels, 1, 1, 1, PixelFormat::Rgb) };
+        let fb = unsafe {
+            Framebuffer::from_mut_slice(
+                &mut pixels,
+                PixelSize::new(1, 1),
+                Stride::new(1),
+                PixelFormat::Rgb,
+            )
+        };
 
         assert!(matches!(
             fb,
@@ -593,7 +658,14 @@ mod tests {
     fn bitmask_framebuffer_is_not_drawable() {
         let mut pixels = vec![0u8; 4];
         // SAFETY: the constructor only inspects `pixels` before rejecting it.
-        let fb = unsafe { Framebuffer::from_mut_slice(&mut pixels, 1, 1, 1, PixelFormat::Bitmask) };
+        let fb = unsafe {
+            Framebuffer::from_mut_slice(
+                &mut pixels,
+                PixelSize::new(1, 1),
+                Stride::new(1),
+                PixelFormat::Bitmask,
+            )
+        };
 
         assert!(matches!(
             fb,

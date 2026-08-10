@@ -1,12 +1,12 @@
 use crate::{
     color::{self, Color},
-    graphics::{self, Framebuffer},
+    graphics::{self, Framebuffer, PixelCoord, PixelSize},
     idt::{PS2_COMMAND, PS2_DATA, PS2_STATUS, inb, outb},
 };
 use spin::Mutex;
 
-pub(crate) const MOUSE_CURSOR_SIZE: (usize, usize) = (5, 5);
-const MOUSE_CURSOR_PIXELS: usize = MOUSE_CURSOR_SIZE.0 * MOUSE_CURSOR_SIZE.1;
+pub(crate) const MOUSE_CURSOR_SIZE: PixelSize = PixelSize::new(5, 5);
+const MOUSE_CURSOR_PIXELS: usize = 25;
 
 /// The framebuffer pixels beneath the current mouse cursor.  Keeping the
 /// position and pixels together prevents restoring a buffer from a different
@@ -21,11 +21,12 @@ static MOUSE_CURSOR: Mutex<MouseCursor> = Mutex::new(MouseCursor {
     saved_under: [color::BLACK; MOUSE_CURSOR_PIXELS],
 });
 
-pub fn draw_mouse_cursor(fb: &Framebuffer, x: usize, y: usize) {
-    let Some(right) = x.checked_add(MOUSE_CURSOR_SIZE.0) else {
+pub(crate) fn draw_mouse_cursor(fb: &Framebuffer, origin: PixelCoord) {
+    let (x, y) = (origin.x(), origin.y());
+    let Some(right) = x.checked_add(MOUSE_CURSOR_SIZE.width()) else {
         return;
     };
-    let Some(bottom) = y.checked_add(MOUSE_CURSOR_SIZE.1) else {
+    let Some(bottom) = y.checked_add(MOUSE_CURSOR_SIZE.height()) else {
         return;
     };
     if !fb.is_drawable() || right > fb.width() || bottom > fb.height() {
@@ -34,30 +35,30 @@ pub fn draw_mouse_cursor(fb: &Framebuffer, x: usize, y: usize) {
 
     let mut cursor = MOUSE_CURSOR.lock();
 
-    for row in 0..MOUSE_CURSOR_SIZE.1 {
-        for col in 0..MOUSE_CURSOR_SIZE.0 {
+    for row in 0..MOUSE_CURSOR_SIZE.height() {
+        for col in 0..MOUSE_CURSOR_SIZE.width() {
             // SAFETY: the cursor rectangle was checked to fit in this drawable
             // framebuffer, and `read_pixel` rechecks its byte offset.
-            cursor.saved_under[row * MOUSE_CURSOR_SIZE.0 + col] =
+            cursor.saved_under[row * MOUSE_CURSOR_SIZE.width() + col] =
                 unsafe { fb.read_pixel(x + col, y + row) };
         }
     }
 
     cursor.position = Some((x, y));
-    graphics::draw_rec(fb, (x, y), MOUSE_CURSOR_SIZE, color::WHITE);
+    graphics::draw_rec(fb, PixelCoord::new(x, y), MOUSE_CURSOR_SIZE, color::WHITE);
 }
 
-pub fn erase_mouse_cursor(fb: &Framebuffer) {
+pub(crate) fn erase_mouse_cursor(fb: &Framebuffer) {
     let mut cursor = MOUSE_CURSOR.lock();
     if let Some((x, y)) = cursor.position.take() {
-        for row in 0..MOUSE_CURSOR_SIZE.1 {
-            for col in 0..MOUSE_CURSOR_SIZE.0 {
+        for row in 0..MOUSE_CURSOR_SIZE.height() {
+            for col in 0..MOUSE_CURSOR_SIZE.width() {
                 // SAFETY: `write_pixel` validates the computed pixel range before
                 // performing its raw framebuffer write.
                 unsafe {
                     fb.write_pixel(
                         (y + row) * fb.stride() + (x + col),
-                        &cursor.saved_under[row * MOUSE_CURSOR_SIZE.0 + col],
+                        &cursor.saved_under[row * MOUSE_CURSOR_SIZE.width() + col],
                     )
                 };
             }
@@ -80,23 +81,31 @@ mod tests {
         }
         let original = bytes.clone();
         // SAFETY: `bytes` remains alive and is not otherwise accessed while drawing.
-        let fb = unsafe { Framebuffer::from_mut_slice(&mut bytes, 7, 7, 7, PixelFormat::Rgb) }.unwrap();
+        let fb = unsafe {
+            Framebuffer::from_mut_slice(
+                &mut bytes,
+                PixelSize::new(7, 7),
+                graphics::Stride::new(7),
+                PixelFormat::Rgb,
+            )
+        }
+        .unwrap();
 
         erase_mouse_cursor(&fb);
-        draw_mouse_cursor(&fb, 1, 1);
+        draw_mouse_cursor(&fb, PixelCoord::new(1, 1));
         erase_mouse_cursor(&fb);
 
         assert_eq!(bytes, original);
     }
 }
 
-pub struct MouseQueue {
+pub(crate) struct MouseQueue {
     buf: [u8; 256],
     head: usize,
     tail: usize,
 }
 
-pub static MOUSE_QUEUE: Mutex<MouseQueue> = Mutex::new(MouseQueue::new());
+pub(crate) static MOUSE_QUEUE: Mutex<MouseQueue> = Mutex::new(MouseQueue::new());
 
 impl MouseQueue {
     const fn new() -> Self {
@@ -107,7 +116,7 @@ impl MouseQueue {
         }
     }
 
-    pub fn push(&mut self, byte: u8) {
+    pub(crate) fn push(&mut self, byte: u8) {
         let next = (self.tail + 1) % self.buf.len();
         // Queue full
         if next == self.head {
@@ -117,7 +126,7 @@ impl MouseQueue {
         self.tail = next;
     }
 
-    pub fn pop(&mut self) -> Option<u8> {
+    pub(crate) fn pop(&mut self) -> Option<u8> {
         if self.head == self.tail {
             return None;
         }
@@ -137,16 +146,31 @@ static PACKET_STATE: Mutex<PacketState> = Mutex::new(PacketState {
     index: 0,
 });
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(crate) struct MouseDelta(i16);
+
+impl MouseDelta {
+    #[must_use]
+    pub(crate) const fn new(value: i16) -> Self {
+        Self(value)
+    }
+
+    #[must_use]
+    pub(crate) const fn get(self) -> i16 {
+        self.0
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
-pub struct MouseEvent {
-    pub(crate) dx: i16,
-    pub(crate) dy: i16,
+pub(crate) struct MouseEvent {
+    pub(crate) dx: MouseDelta,
+    pub(crate) dy: MouseDelta,
     left: bool,
     right: bool,
     middle: bool,
 }
 
-pub fn poll() -> Option<MouseEvent> {
+pub(crate) fn poll() -> Option<MouseEvent> {
     let byte = x86_64::instructions::interrupts::without_interrupts(|| MOUSE_QUEUE.lock().pop())?;
     let mut state = PACKET_STATE.lock();
 
@@ -186,8 +210,8 @@ pub fn poll() -> Option<MouseEvent> {
     dy = -dy;
 
     Some(MouseEvent {
-        dx,
-        dy,
+        dx: MouseDelta::new(dx),
+        dy: MouseDelta::new(dy),
         left: flags & 0b0000_0001 != 0,
         right: flags & 0b0000_0010 != 0,
         middle: flags & 0b0000_0100 != 0,

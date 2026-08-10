@@ -17,6 +17,9 @@ use crate::{
     kprint, kprintln,
 };
 
+#[cfg(feature = "mouse")]
+use crate::graphics::PixelCoord;
+
 /// Initializes and runs the interactive shell. Never returns (`-> !`).
 ///
 /// Clears the screen, prints the initial prompt, and enters a polling loop
@@ -46,9 +49,11 @@ pub fn init(fb: &Framebuffer) -> ! {
             if let Some(event) = mouse::poll() {
                 use crate::{CURSOR_H, CURSOR_W};
                 mouse::erase_mouse_cursor(fb);
-                mouse_x = (mouse_x + event.dx as i32).clamp(0, fb.width() as i32 - CURSOR_W as i32);
-                mouse_y = (mouse_y + event.dy as i32).clamp(0, fb.height() as i32 - CURSOR_H as i32);
-                mouse::draw_mouse_cursor(fb, mouse_x as usize, mouse_y as usize);
+                mouse_x =
+                    (mouse_x + event.dx.get() as i32).clamp(0, fb.width() as i32 - CURSOR_W as i32);
+                mouse_y = (mouse_y + event.dy.get() as i32)
+                    .clamp(0, fb.height() as i32 - CURSOR_H as i32);
+                mouse::draw_mouse_cursor(fb, PixelCoord::new(mouse_x as usize, mouse_y as usize));
             }
         }
         if let Some(key) = keyboard::poll() {

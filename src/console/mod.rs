@@ -20,7 +20,10 @@ use spin::Mutex;
 
 use crate::{
     FONT_WEIGHT, PROMPT, color,
-    graphics::{self, Framebuffer},
+    graphics::{
+        self, Framebuffer,
+        pixel::{PixelCoord, PixelRows, PixelSize},
+    },
 };
 
 /// Internal writer state. Holds everything needed to render text to the
@@ -111,7 +114,7 @@ impl KWriter {
         let threshold = self.fb.height().saturating_sub(3 * fh);
         if self.y() >= threshold {
             let scroll_by = self.y() - threshold + fh;
-            graphics::scroll_up(&self.fb, scroll_by);
+            graphics::scroll_up(&self.fb, PixelRows::new(scroll_by));
             self.row = threshold.saturating_sub(fh) / fh;
         }
     }
@@ -150,7 +153,7 @@ impl fmt::Write for KWriter {
             graphics::draw_text(
                 &self.fb,
                 s,
-                (self.x(), self.y()),
+                PixelCoord::new(self.x(), self.y()),
                 color::WHITE,
                 Some(self.font_size),
             );
@@ -229,8 +232,8 @@ pub(crate) fn backspace() {
         // paint over the erased character with background color
         crate::graphics::draw_rec(
             &writer.fb,
-            (writer.x(), writer.y()),
-            (fw, fh),
+            PixelCoord::new(writer.x(), writer.y()),
+            PixelSize::new(fw, fh),
             crate::color::BLACK,
         );
     }
@@ -250,8 +253,8 @@ pub(crate) fn draw_cursor() {
 
         crate::graphics::draw_rec(
             &writer.fb,
-            (writer.x(), writer.y()),
-            (fw, fh - 4),
+            PixelCoord::new(writer.x(), writer.y()),
+            PixelSize::new(fw, fh - 4),
             crate::color::WHITE,
         );
     }
@@ -265,8 +268,8 @@ pub(crate) fn erase_cursor() {
         let fw = font_w(writer.font_size);
         crate::graphics::draw_rec(
             &writer.fb,
-            (writer.x(), writer.y()),
-            (fw, fh - 4),
+            PixelCoord::new(writer.x(), writer.y()),
+            PixelSize::new(fw, fh - 4),
             crate::color::BLACK,
         );
     }
@@ -290,7 +293,7 @@ pub(crate) fn print_history() {
             graphics::draw_text(
                 &writer.fb,
                 line,
-                (0, y),
+                PixelCoord::new(0, y),
                 color::WHITE,
                 Some(writer.font_size),
             );
@@ -408,15 +411,15 @@ fn redraw_input_line(writer: &mut KWriter, text: &str) {
     // erase the entire current row
     graphics::draw_rec(
         &writer.fb,
-        (0, writer.y()),
-        (writer.fb.width(), fh),
+        PixelCoord::new(0, writer.y()),
+        PixelSize::new(writer.fb.width(), fh),
         color::BLACK,
     );
 
     graphics::draw_text(
         &writer.fb,
         PROMPT,
-        (0, writer.y()),
+        PixelCoord::new(0, writer.y()),
         color::WHITE,
         Some(writer.font_size),
     );
@@ -424,7 +427,7 @@ fn redraw_input_line(writer: &mut KWriter, text: &str) {
     graphics::draw_text(
         &writer.fb,
         text,
-        (fw * PROMPT.chars().count(), writer.y()),
+        PixelCoord::new(fw * PROMPT.chars().count(), writer.y()),
         color::WHITE,
         Some(writer.font_size),
     );

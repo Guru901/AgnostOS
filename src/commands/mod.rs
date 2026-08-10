@@ -97,7 +97,7 @@ pub(crate) fn run_command(command: &str) {
             _ => kprintln!("usage: font <16|20|24|32>"),
         },
         Commands::Clear => console::reset(),
-        Commands::Shutdown => shutdown::exit_qemu(0),
+        Commands::Shutdown => shutdown::exit_qemu(shutdown::QemuExitCode::SUCCESS),
         Commands::Empty => {}
         Commands::Unknown => kprintln!("Unknown command"),
     }

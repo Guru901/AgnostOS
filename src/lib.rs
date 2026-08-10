@@ -5,8 +5,14 @@ extern crate alloc;
 /// Module that contains the code for our custom allocator.
 pub mod allocator;
 
-pub mod constants;
-pub use constants::*;
+pub(crate) mod constants;
+pub(crate) use constants::*;
+
+/// Returns whether the UEFI boot-services transition has completed.
+#[must_use]
+pub fn boot_services_exited() -> bool {
+    BOOT_SERVICES_EXITED.load(core::sync::atomic::Ordering::Relaxed)
+}
 
 /// Module that contains the code for interrupts
 pub mod idt;
