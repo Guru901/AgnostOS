@@ -11,7 +11,6 @@ pub(crate) static HEAP_START: AtomicUsize = AtomicUsize::new(0);
 pub(crate) static HEAP_SIZE: AtomicUsize = AtomicUsize::new(0);
 
 pub(crate) static BOOT_SERVICES_EXITED: AtomicBool = AtomicBool::new(false);
-pub(crate) static IDT_INITIALISED: AtomicBool = AtomicBool::new(false);
 
 pub(crate) static TICKS: AtomicU64 = AtomicU64::new(0);
 

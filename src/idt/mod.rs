@@ -6,9 +6,9 @@ use x86_64::{
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame},
 };
 
+use crate::kprintln;
 #[cfg(feature = "mouse")]
 use crate::mouse::{MOUSE_QUEUE, initialize_controller};
-use crate::{IDT_INITIALISED, kprintln};
 use crate::{
     TICKS,
     keyboard::{KEYBOARD_QUEUE, Scancode},
@@ -49,8 +49,6 @@ pub fn init() {
             };
         });
     });
-
-    IDT_INITIALISED.store(true, Ordering::Relaxed);
 }
 
 const PIC1_OFFSET: u8 = 32;
