@@ -1,13 +1,18 @@
+use core::sync::atomic::Ordering;
+
 use spin::Once;
 use x86_64::{
     instructions::port::Port,
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame},
 };
 
-use crate::keyboard::{KEYBOARD_QUEUE, Scancode};
 use crate::kprintln;
 #[cfg(feature = "mouse")]
 use crate::mouse::{MOUSE_QUEUE, initialize_controller};
+use crate::{
+    TICKS,
+    keyboard::{KEYBOARD_QUEUE, Scancode},
+};
 
 static IDT: Once<InterruptDescriptorTable> = Once::new();
 static PIC_INITIALIZED: Once<()> = Once::new();
@@ -22,6 +27,7 @@ pub fn init() {
 
             // IRQ1 after PIC remapping.
             idt[KEYBOARD_INTERRUPT_VECTOR].set_handler_fn(keyboard_interrupt_handler);
+            idt[TIMER_INTERRUPT_VECTOR].set_handler_fn(timer_interrupt_handler);
             #[cfg(feature = "mouse")]
             idt[MOUSE_INTERRUPT_VECTOR].set_handler_fn(mouse_interrupt_handler);
 
@@ -31,7 +37,10 @@ pub fn init() {
 
         PIC_INITIALIZED.call_once(|| {
             // SAFETY: interrupts are disabled while the legacy PIC is reprogrammed.
-            unsafe { initialize_pic() };
+            unsafe {
+                initialize_pic();
+                initialize_pit();
+            };
             #[cfg(feature = "mouse")]
             // SAFETY: interrupts remain disabled, so PS/2 controller setup cannot
             // race its IRQ handlers.
@@ -49,8 +58,23 @@ const PIC2_COMMAND: u16 = 0xa0;
 const PIC2_DATA: u16 = 0xa1;
 const PIC2_OFFSET: u8 = 40;
 const KEYBOARD_INTERRUPT_VECTOR: u8 = PIC1_OFFSET + 1;
+const TIMER_INTERRUPT_VECTOR: u8 = PIC1_OFFSET;
 #[cfg(feature = "mouse")]
 const MOUSE_INTERRUPT_VECTOR: u8 = PIC2_OFFSET + 4;
+
+const PIT_FREQUENCY: u32 = 1_193_182;
+const TIMER_FREQUENCY: u32 = 1000;
+
+unsafe fn initialize_pit() {
+    let divisor = (PIT_FREQUENCY / TIMER_FREQUENCY) as u16;
+
+    unsafe {
+        outb(0x36, 0x43); // channel 0, lo/hi byte, mode 3
+
+        outb((divisor & 0xff) as u8, 0x40);
+        outb((divisor >> 8) as u8, 0x40);
+    }
+}
 
 /// Maps hardware IRQs away from CPU exception vectors and unmasks IRQ1
 /// (keyboard). With the `mouse` feature, it also unmasks IRQ2 (slave cascade)
@@ -61,12 +85,16 @@ unsafe fn initialize_pic() {
     const ICW1_INIT: u8 = 0x10;
     const ICW1_ICW4: u8 = 0x01;
     const ICW4_8086: u8 = 0x01;
+
     #[cfg(feature = "mouse")]
-    const MASTER_IRQ_MASK: u8 = 0b1111_1001; // IRQ1 (keyboard) + IRQ2 (cascade) unmasked
+    const MASTER_IRQ_MASK: u8 = 0b1111_1000;
+
     #[cfg(not(feature = "mouse"))]
-    const MASTER_IRQ_MASK: u8 = 0b1111_1101; // IRQ1 (keyboard) unmasked
+    const MASTER_IRQ_MASK: u8 = 0b1111_1100;
+
     #[cfg(feature = "mouse")]
     const SLAVE_IRQ_MASK: u8 = 0b1110_1111; // IRQ12 (bit 4 of slave) unmasked
+
     #[cfg(not(feature = "mouse"))]
     const SLAVE_IRQ_MASK: u8 = 0b1111_1111; // all slave IRQs masked
 
@@ -95,6 +123,14 @@ unsafe fn initialize_pic() {
 
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
     kprintln!("{:#?}", stack_frame);
+}
+
+extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
+    TICKS.fetch_add(1, Ordering::Relaxed);
+
+    unsafe {
+        outb(0x20, PIC1_COMMAND);
+    }
 }
 
 extern "x86-interrupt" fn double_fault_handler(
