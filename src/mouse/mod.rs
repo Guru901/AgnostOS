@@ -133,7 +133,7 @@ pub(crate) struct MouseEvent {
 }
 
 pub(crate) fn poll() -> Option<MouseEvent> {
-    let byte = x86_64::instructions::interrupts::without_interrupts(|| MOUSE_QUEUE.lock().pop())?;
+    let byte = crate::platform::without_interrupts(|| MOUSE_QUEUE.lock().pop())?;
     let mut state = PACKET_STATE.lock();
 
     // Byte 0 of a valid packet always has bit 3 set. If we're expecting a

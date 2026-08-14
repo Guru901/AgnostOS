@@ -1,4 +1,4 @@
-use crate::platform::ring_buffer::RingBuffer;
+use crate::platform::{ring_buffer::RingBuffer, without_interrupts};
 use pc_keyboard::{
     DecodedKey, HandleControl, KeyCode, KeyState, PS2Keyboard, ScancodeSet1, layouts,
 };
@@ -45,8 +45,7 @@ pub(crate) enum KeyboardEvent {
 pub(crate) fn poll() -> Option<KeyboardEvent> {
     // An IRQ can preempt this code. Disable interrupts while holding the queue
     // lock so the handler never spins waiting for the interrupted code to unlock it.
-    let scancode =
-        x86_64::instructions::interrupts::without_interrupts(|| KEYBOARD_QUEUE.lock().pop())?;
+    let scancode = without_interrupts(|| KEYBOARD_QUEUE.lock().pop())?;
 
     let mut kb = KEYBOARD.lock();
 

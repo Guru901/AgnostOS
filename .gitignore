@@ -1,3 +1,4 @@
 /esp/*
 /target/*
 /docs/*
+.DS_Store
