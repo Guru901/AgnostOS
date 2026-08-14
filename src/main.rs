@@ -5,7 +5,7 @@ extern crate alloc;
 
 use agnostos::{
     allocator, boot_services_exited, console, graphics::Framebuffer, idt, kprintln, shell,
-    timer::sleep_ms, uefi_graphics,
+    uefi_graphics,
 };
 
 #[cfg(feature = "custom-allocator")]
