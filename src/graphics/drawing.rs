@@ -80,10 +80,10 @@ pub fn draw_line(fb: &Framebuffer, start: PixelCoord, end: PixelCoord, color: Co
     ) else {
         return;
     };
-    let Some(delta_x) = x2.checked_sub(x).or_else(|| x.checked_sub(x2)) else {
-        return;
-    };
-    let Some(delta_y) = y2.checked_sub(y).or_else(|| y.checked_sub(y2)) else {
+    let (Ok(delta_x), Ok(delta_y)) = (
+        i64::try_from(x.abs_diff(x2)),
+        i64::try_from(y.abs_diff(y2)),
+    ) else {
         return;
     };
     let step_x = if x < x2 { 1 } else { -1 };
