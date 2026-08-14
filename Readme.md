@@ -27,7 +27,7 @@ The repository includes the UEFI firmware image required by the run script at
 From the repository root, run:
 
 ```sh
-./build.sh
+./scripts/build.sh
 ```
 
 The script builds the release UEFI executable, creates a temporary EFI System
