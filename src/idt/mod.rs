@@ -28,7 +28,7 @@ static HARDWARE_INITIALIZED: Once<()> = Once::new();
 /// controllers while interrupts are disabled.
 #[cfg(target_arch = "x86_64")]
 pub fn init() {
-    x86_64::instructions::interrupts::without_interrupts(|| {
+    crate::platform::without_interrupts(|| {
         install_idt();
         initialize_hardware();
     });
@@ -238,7 +238,7 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
     // data port associated with this interrupt.
     let code = unsafe { inb(PS2_DATA) };
 
-    x86_64::instructions::interrupts::without_interrupts(|| {
+    crate::platform::without_interrupts(|| {
         KEYBOARD_QUEUE.lock().push(Scancode::new(code));
     });
 
