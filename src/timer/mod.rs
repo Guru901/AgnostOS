@@ -13,6 +13,7 @@ pub fn uptime_ms() -> u64 {
 /// waits — it does not yield the CPU.
 pub fn sleep_block(ms: u64) {
     if !platform::interrupts_enabled() {
+        #[cfg(target_arch = "x86_64")]
         debug_assert!(false, "sleep_block called before IDT init");
         return;
     };
@@ -27,6 +28,7 @@ pub fn sleep_block(ms: u64) {
 
 pub fn sleep_ms(ms: u64) {
     if !platform::interrupts_enabled() {
+        #[cfg(target_arch = "x86_64")]
         debug_assert!(false, "sleep_ms called before IDT init");
         return;
     };
