@@ -34,6 +34,8 @@ pub mod color;
 /// Module that contains the code for handling keyboard.
 pub mod keyboard;
 
+pub mod timer;
+
 #[cfg(feature = "mouse")]
 pub mod mouse;
 
