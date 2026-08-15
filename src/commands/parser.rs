@@ -63,4 +63,12 @@ mod tests {
         assert_eq!(parsed.flags.as_slice(), ["--temporary"]);
         assert_eq!(parsed.args.as_slice(), ["24"]);
     }
+
+    #[test]
+    fn parser_recognizes_uptime() {
+        let parsed = parse("uptime");
+        assert_eq!(parsed.command, Command::Uptime);
+        assert!(parsed.args.is_empty());
+        assert!(parsed.flags.is_empty());
+    }
 }

@@ -12,7 +12,11 @@ pub fn uptime_ms() -> u64 {
 }
 
 pub(crate) fn uptime() -> String {
-    let total_seconds = uptime_ms() / 1000;
+    format_uptime(uptime_ms())
+}
+
+fn format_uptime(uptime_ms: u64) -> String {
+    let total_seconds = uptime_ms / 1000;
 
     let hours = total_seconds / 3600;
     let minutes = (total_seconds % 3600) / 60;
@@ -59,4 +63,24 @@ pub fn deadline_ms(ms: u64) -> u64 {
 
 pub fn expired(deadline: u64) -> bool {
     ticks() >= deadline
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_uptime;
+
+    #[test]
+    fn formats_subsecond_uptime_as_zero_seconds() {
+        assert_eq!(format_uptime(999), "0 hrs 0 min 0 sec");
+    }
+
+    #[test]
+    fn formats_minutes_and_seconds() {
+        assert_eq!(format_uptime(125_000), "0 hrs 2 min 5 sec");
+    }
+
+    #[test]
+    fn formats_hours_minutes_and_seconds() {
+        assert_eq!(format_uptime(3_661_000), "1 hrs 1 min 1 sec");
+    }
 }
