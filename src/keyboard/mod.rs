@@ -40,6 +40,7 @@ pub(crate) enum KeyboardEvent {
     ArrowUp,
     ArrowDown,
     CtrlL,
+    Tab,
 }
 
 pub(crate) fn poll() -> Option<KeyboardEvent> {
@@ -60,6 +61,9 @@ pub(crate) fn poll() -> Option<KeyboardEvent> {
         }
         KeyCode::ArrowDown if key_event.state == KeyState::Down => {
             return Some(KeyboardEvent::ArrowDown);
+        }
+        KeyCode::Tab if key_event.state == KeyState::Down => {
+            return Some(KeyboardEvent::Tab);
         }
         _ => {}
     }
