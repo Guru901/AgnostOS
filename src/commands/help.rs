@@ -41,6 +41,10 @@ pub(crate) fn help(args: &[&str]) {
                 kprintln!("meminfo - show heap memory information");
                 kprintln!("usage: meminfo");
             }
+            Command::Uptime => {
+                kprintln!("uptime - tells how long the system has been running for");
+                kprintln!("usage: uptime");
+            }
             Command::Shutdown => {
                 kprintln!("shutdown - shuts the machine down instantly");
                 kprintln!("usage: shutdown");
@@ -58,6 +62,7 @@ pub(crate) fn help(args: &[&str]) {
         kprintln!("  history   reprint screen history");
         kprintln!("  font      change font size");
         kprintln!("  meminfo   show heap memory information");
+        kprintln!("  uptime    tells how long the system has been running for");
         kprintln!("  shutdown  shuts the machine down");
         kprintln!("");
         kprintln!("tip: type 'help <command>' for more details");

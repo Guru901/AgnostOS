@@ -10,7 +10,7 @@ test = false
 required-features = ["uefi-bin"]
 
 [features]
-default = ["linked-list-allocator", "mouse"]
+default = ["linked-list-allocator"]
 uefi-bin = []
 linked-list-allocator = ["dep:linked_list_allocator"]
 custom-allocator = []

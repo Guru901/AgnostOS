@@ -1,3 +1,5 @@
+use alloc::{format, string::String};
+
 use crate::{TICKS, platform};
 use core::{hint::spin_loop, sync::atomic::Ordering};
 
@@ -7,6 +9,16 @@ pub(crate) fn ticks() -> u64 {
 
 pub fn uptime_ms() -> u64 {
     ticks()
+}
+
+pub(crate) fn uptime() -> String {
+    let total_seconds = uptime_ms() / 1000;
+
+    let hours = total_seconds / 3600;
+    let minutes = (total_seconds % 3600) / 60;
+    let seconds = total_seconds % 60;
+
+    format!("{} hrs {} min {} sec", hours, minutes, seconds)
 }
 
 /// Busy-waits using spin_loop() instead of hlt. Only use this for very short

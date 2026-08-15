@@ -12,6 +12,7 @@ pub(crate) enum Command {
     Shutdown,
     Empty,
     Unknown,
+    Uptime,
 }
 
 pub(crate) struct ParsedCommand<'a> {
@@ -31,6 +32,7 @@ pub(crate) fn parse(input: &str) -> ParsedCommand<'_> {
         "font" => Command::Font,
         "clear" => Command::Clear,
         "shutdown" => Command::Shutdown,
+        "uptime" => Command::Uptime,
         "" => Command::Empty,
         _ => Command::Unknown,
     };

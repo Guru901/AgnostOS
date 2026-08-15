@@ -2,7 +2,7 @@ mod help;
 mod parser;
 mod shutdown;
 
-use crate::{HEAP_SIZE, HEAP_START, commands::help::help, console, kprintln};
+use crate::{HEAP_SIZE, HEAP_START, commands::help::help, console, kprintln, timer};
 use core::sync::atomic::Ordering;
 use noto_sans_mono_bitmap::RasterHeight;
 use parser::{Command, parse};
@@ -39,6 +39,7 @@ pub(crate) fn run_command(command: &str) {
         },
         Command::Clear => console::reset(),
         Command::Shutdown => shutdown::exit_qemu(shutdown::QemuExitCode::SUCCESS),
+        Command::Uptime => kprintln!("{}", timer::uptime()),
         Command::Empty => {}
         Command::Unknown => kprintln!("Unknown command"),
     }
