@@ -15,7 +15,6 @@
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::fmt;
-use core::panicking::panic_const::panic_const_gen_fn_none_drop;
 use noto_sans_mono_bitmap::{RasterHeight, get_raster_width};
 use spin::Mutex;
 
