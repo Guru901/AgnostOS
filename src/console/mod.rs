@@ -15,6 +15,7 @@
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::fmt;
+use core::panicking::panic_const::panic_const_gen_fn_none_drop;
 use noto_sans_mono_bitmap::{RasterHeight, get_raster_width};
 use spin::Mutex;
 
@@ -371,6 +372,14 @@ fn command_history(history: &[String]) -> Vec<&String> {
         .iter()
         .filter(|line| line.starts_with(PROMPT) && line.as_str() != "^C" && !line.is_empty())
         .collect()
+}
+
+pub(crate) fn arrow_right() {
+    todo!("Arrow right isnt implemented yet.")
+}
+
+pub(crate) fn arrow_left() {
+    todo!("Arrow left isnt implemented yet.")
 }
 
 /// Navigates one step back in command history, updating the input line

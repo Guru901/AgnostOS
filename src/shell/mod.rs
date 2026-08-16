@@ -89,6 +89,8 @@ pub fn init() -> ! {
                 }
                 KeyboardEvent::ZoomIn => console::zoom_in(&line),
                 KeyboardEvent::ZoomOut => console::zoom_out(&line),
+                KeyboardEvent::ArrowRight => console::arrow_right(),
+                KeyboardEvent::ArrowLeft => console::arrow_left(),
                 KeyboardEvent::ArrowUp => console::arrow_up(&mut line),
                 KeyboardEvent::ArrowDown => console::arrow_down(&mut line),
                 KeyboardEvent::CtrlL => {
