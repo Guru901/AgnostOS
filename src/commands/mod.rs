@@ -44,3 +44,7 @@ pub(crate) fn run_command(command: &str) {
         Command::Unknown => kprintln!("Unknown command"),
     }
 }
+
+pub(crate) fn complete_command(prefix: &str) -> Option<&'static str> {
+    parser::complete_command(prefix)
+}

@@ -96,6 +96,8 @@ pub fn init() -> ! {
                     line.clear();
                     kprint!("{PROMPT}");
                 }
+
+                KeyboardEvent::Tab => console::auto_complete(&mut line),
             }
 
             console::draw_cursor();

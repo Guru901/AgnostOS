@@ -18,6 +18,7 @@ use core::fmt;
 use noto_sans_mono_bitmap::{RasterHeight, get_raster_width};
 use spin::Mutex;
 
+use crate::commands;
 use crate::{
     FONT_WEIGHT, PROMPT, color,
     graphics::{
@@ -272,6 +273,16 @@ pub(crate) fn draw_cursor() {
             crate::color::WHITE,
         );
     }
+}
+
+pub(crate) fn auto_complete(line: &mut String) {
+    let Some(command) = commands::complete_command(line) else {
+        return;
+    };
+
+    let suffix = &command[line.len()..];
+    kprint!("{suffix}");
+    line.push_str(suffix);
 }
 
 /// Erases the block cursor at the current cursor position by painting
