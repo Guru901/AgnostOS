@@ -45,6 +45,8 @@ struct KWriter {
     history: Vec<String>,
     /// The line currently being accumulated (not yet terminated by `\n`).
     current_line: String,
+    /// Character offset in the editable shell input, excluding the prompt.
+    input_cursor: usize,
     /// Active font size. Affects glyph rendering and cursor/line spacing.
     font_size: RasterHeight,
     /// Index into the command history for up/down arrow recall.
@@ -96,6 +98,7 @@ pub fn init(fb: Framebuffer) {
         glyph_cells: Vec::new(),
         font_size: RasterHeight::Size16,
         current_line: String::new(),
+        input_cursor: 0,
         history: Vec::new(),
         history_index: None,
     });
@@ -168,7 +171,8 @@ impl fmt::Write for KWriter {
             graphics::draw_text(
                 &self.fb,
                 s,
-                PixelCoord::new(self.x(), self.y()),
+                self.column,
+                self.row,
                 color::WHITE,
                 Some(self.font_size),
             );
@@ -221,36 +225,29 @@ pub(crate) fn reset() {
         writer.glyph_cells.clear();
         writer.history.clear();
         writer.current_line.clear();
+        writer.input_cursor = 0;
         writer.history_index = None;
     }
 }
 
 /// Erases the last typed character from the screen and moves the cursor back.
 /// Handles wrapping back to the previous line if the cursor is at x=0.
-pub(crate) fn backspace() {
+pub(crate) fn backspace(line: &mut String) {
     if let Some(writer) = KWRITER.lock().as_mut() {
-        let fh = font_h(writer.font_size);
-        let fw = font_w(writer.font_size);
-
-        // keep logical input in sync with erased glyph
-        if writer.current_line.chars().count() <= PROMPT.chars().count() {
+        if writer.input_cursor == 0 {
             return;
         }
-        writer.current_line.pop();
+        remove_char_at(line, writer.input_cursor);
+        writer.input_cursor -= 1;
+        redraw_input_line(writer, line, writer.input_cursor);
+    }
+}
 
-        let Some(cell) = writer.glyph_cells.pop() else {
-            return;
-        };
-        writer.column = cell.column;
-        writer.row = cell.row;
-
-        // paint over the erased character with background color
-        crate::graphics::draw_rec(
-            &writer.fb,
-            PixelCoord::new(writer.x(), writer.y()),
-            PixelSize::new(fw, fh),
-            crate::color::BLACK,
-        );
+pub(crate) fn insert_char(line: &mut String, ch: char) {
+    if let Some(writer) = KWRITER.lock().as_mut() {
+        insert_char_at(line, writer.input_cursor, ch);
+        writer.input_cursor += 1;
+        redraw_input_line(writer, line, writer.input_cursor);
     }
 }
 
@@ -318,7 +315,8 @@ pub(crate) fn print_history() {
             graphics::draw_text(
                 &writer.fb,
                 line,
-                PixelCoord::new(0, y),
+                0,
+                y / fh,
                 color::WHITE,
                 Some(writer.font_size),
             );
@@ -374,11 +372,22 @@ fn command_history(history: &[String]) -> Vec<&String> {
 }
 
 pub(crate) fn arrow_right() {
-    todo!("Arrow right isnt implemented yet.")
+    if let Some(writer) = KWRITER.lock().as_mut() {
+        let length = writer
+            .current_line
+            .chars()
+            .count()
+            .saturating_sub(PROMPT.chars().count());
+        writer.input_cursor = (writer.input_cursor + 1).min(length);
+        redraw_current_input(writer);
+    }
 }
 
 pub(crate) fn arrow_left() {
-    todo!("Arrow left isnt implemented yet.")
+    if let Some(writer) = KWRITER.lock().as_mut() {
+        writer.input_cursor = writer.input_cursor.saturating_sub(1);
+        redraw_current_input(writer);
+    }
 }
 
 /// Navigates one step back in command history, updating the input line
@@ -400,7 +409,7 @@ pub(crate) fn arrow_up(current_line: &mut String) {
         writer.history_index = Some(new_index);
 
         let recalled = commands[new_index].trim_start_matches(PROMPT).to_string();
-        redraw_input_line(writer, &recalled);
+        redraw_input_line(writer, &recalled, recalled.chars().count());
         current_line.clear();
         current_line.push_str(&recalled);
     }
@@ -428,7 +437,7 @@ pub(crate) fn arrow_down(current_line: &mut String) {
             }
         };
 
-        redraw_input_line(writer, &new_text);
+        redraw_input_line(writer, &new_text, new_text.chars().count());
         current_line.clear();
         current_line.push_str(&new_text);
     }
@@ -437,45 +446,123 @@ pub(crate) fn arrow_down(current_line: &mut String) {
 /// Redraws the current input line in place — erases the row, redraws the
 /// prompt, then draws `text` after it. Updates `writer.x` to the end of
 /// the new text so the cursor lands in the right place.
-fn redraw_input_line(writer: &mut KWriter, text: &str) {
+fn redraw_input_line(writer: &mut KWriter, text: &str, cursor: usize) {
     let fh = font_h(writer.font_size);
     let fw = font_w(writer.font_size);
+    // The cursor may currently be in the middle of a wrapped input line.
+    // Recover the line origin from the first rendered cell before redrawing.
+    let start_row = writer
+        .glyph_cells
+        .first()
+        .map_or(writer.row, |cell| cell.row);
 
-    // erase the entire current row
+    // Erase all rows the input may occupy; terminal input can wrap.
+    let total_chars = PROMPT.chars().count() + text.chars().count();
+    let rows = (total_chars * fw + writer.fb.width().saturating_sub(1)) / writer.fb.width();
     graphics::draw_rec(
         &writer.fb,
-        PixelCoord::new(0, writer.y()),
-        PixelSize::new(writer.fb.width(), fh),
+        PixelCoord::new(0, start_row * fh),
+        PixelSize::new(writer.fb.width(), fh * rows.max(1)),
         color::BLACK,
-    );
-
-    graphics::draw_text(
-        &writer.fb,
-        PROMPT,
-        PixelCoord::new(0, writer.y()),
-        color::WHITE,
-        Some(writer.font_size),
-    );
-
-    graphics::draw_text(
-        &writer.fb,
-        text,
-        PixelCoord::new(fw * PROMPT.chars().count(), writer.y()),
-        color::WHITE,
-        Some(writer.font_size),
     );
 
     writer.current_line.clear();
     writer.current_line.push_str(PROMPT);
     writer.current_line.push_str(text);
+    writer.input_cursor = cursor;
     writer.glyph_cells.clear();
-    writer
-        .glyph_cells
-        .extend((0..writer.current_line.chars().count()).map(|column| Cell {
+    for (index, ch) in writer.current_line.chars().enumerate() {
+        let (column, row_offset) = cell_position(index, fw, writer.fb.width());
+        let row = start_row + row_offset;
+        let mut buf = [0u8; 4];
+        graphics::draw_text(
+            &writer.fb,
+            ch.encode_utf8(&mut buf),
             column,
-            row: writer.row,
-        }));
-    writer.column = writer.current_line.chars().count();
+            row,
+            color::WHITE,
+            Some(writer.font_size),
+        );
+        writer.glyph_cells.push(Cell { column, row });
+    }
+    writer.row = start_row;
+    set_input_cursor(writer);
+}
+
+fn cell_position(index: usize, cell_width: usize, framebuffer_width: usize) -> (usize, usize) {
+    let pixel_x = index * cell_width;
+    (
+        pixel_x % framebuffer_width / cell_width,
+        pixel_x / framebuffer_width,
+    )
+}
+
+fn insert_char_at(line: &mut String, cursor: usize, ch: char) {
+    let index = line
+        .char_indices()
+        .nth(cursor)
+        .map_or(line.len(), |(i, _)| i);
+    line.insert(index, ch);
+}
+
+fn remove_char_at(line: &mut String, cursor: usize) {
+    let start = line.char_indices().nth(cursor - 1).map_or(0, |(i, _)| i);
+    let end = line
+        .char_indices()
+        .nth(cursor)
+        .map_or(line.len(), |(i, _)| i);
+    line.replace_range(start..end, "");
+}
+
+/// Restores the input glyphs after the old block cursor has been erased, then
+/// places the cursor at its new logical position.
+fn redraw_current_input(writer: &mut KWriter) {
+    let text = writer
+        .current_line
+        .strip_prefix(PROMPT)
+        .unwrap_or("")
+        .to_string();
+    redraw_input_line(writer, &text, writer.input_cursor);
+}
+
+fn set_input_cursor(writer: &mut KWriter) {
+    let index = PROMPT.chars().count() + writer.input_cursor;
+    if let Some(cell) = writer.glyph_cells.get(index) {
+        writer.column = cell.column;
+        writer.row = cell.row;
+    } else if let Some(cell) = writer.glyph_cells.last() {
+        writer.column = cell.column + 1;
+        writer.row = cell.row;
+        if (writer.column + 1) * font_w(writer.font_size) > writer.fb.width() {
+            writer.column = 0;
+            writer.row += 1;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cell_position_wraps_using_cell_dimensions() {
+        assert_eq!(cell_position(0, 8, 24), (0, 0));
+        assert_eq!(cell_position(2, 8, 24), (2, 0));
+        assert_eq!(cell_position(3, 8, 24), (0, 1));
+        assert_eq!(cell_position(4, 8, 24), (1, 1));
+    }
+
+    #[test]
+    fn editing_inserts_and_removes_at_cursor_without_breaking_utf8() {
+        let mut line = String::from("ab😀d");
+        insert_char_at(&mut line, 2, 'X');
+        assert_eq!(line, "abX😀d");
+
+        remove_char_at(&mut line, 3);
+        assert_eq!(line, "ab😀d");
+        remove_char_at(&mut line, 3);
+        assert_eq!(line, "abd");
+    }
 }
 
 /// Sets the font size directly without redrawing. Use [`zoom_in`]/[`zoom_out`]

@@ -73,13 +73,10 @@ pub fn init() -> ! {
                     }
                     '\u{8}' => {
                         // backspace — remove last char from buffer and erase from screen
-                        if line.pop().is_some() {
-                            console::backspace();
-                        }
+                        console::backspace(&mut line);
                     }
                     c => {
-                        line.push(c);
-                        kprint!("{}", c);
+                        console::insert_char(&mut line, c);
                     }
                 },
                 KeyboardEvent::CtrlC => {
