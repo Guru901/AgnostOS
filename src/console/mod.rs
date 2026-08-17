@@ -378,14 +378,14 @@ pub(crate) fn arrow_right() {
             .chars()
             .count()
             .saturating_sub(PROMPT.chars().count());
-        writer.input_cursor = (writer.input_cursor + 1).min(length);
+        writer.input_cursor = move_cursor_right(writer.input_cursor, length);
         redraw_current_input(writer);
     }
 }
 
 pub(crate) fn arrow_left() {
     if let Some(writer) = KWRITER.lock().as_mut() {
-        writer.input_cursor = writer.input_cursor.saturating_sub(1);
+        writer.input_cursor = move_cursor_left(writer.input_cursor);
         redraw_current_input(writer);
     }
 }
@@ -514,6 +514,14 @@ fn remove_char_at(line: &mut String, cursor: usize) {
     line.replace_range(start..end, "");
 }
 
+fn move_cursor_left(cursor: usize) -> usize {
+    cursor.saturating_sub(1)
+}
+
+fn move_cursor_right(cursor: usize, line_length: usize) -> usize {
+    (cursor + 1).min(line_length)
+}
+
 /// Restores the input glyphs after the old block cursor has been erased, then
 /// places the cursor at its new logical position.
 fn redraw_current_input(writer: &mut KWriter) {
@@ -562,6 +570,14 @@ mod tests {
         assert_eq!(line, "ab😀d");
         remove_char_at(&mut line, 3);
         assert_eq!(line, "abd");
+    }
+
+    #[test]
+    fn cursor_movement_stays_within_the_editable_line() {
+        assert_eq!(move_cursor_left(0), 0);
+        assert_eq!(move_cursor_left(3), 2);
+        assert_eq!(move_cursor_right(0, 3), 1);
+        assert_eq!(move_cursor_right(3, 3), 3);
     }
 }
 
