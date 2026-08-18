@@ -10,6 +10,20 @@ pub use framebuffer::{Framebuffer, FramebufferBytes, FramebufferError};
 pub use pixel::{PixelCoord, PixelRadius, PixelRows, PixelSize, Stride};
 pub use text::draw_text;
 
+pub(crate) fn cell_width(size: noto_sans_mono_bitmap::RasterHeight) -> usize {
+    noto_sans_mono_bitmap::get_raster_width(crate::FONT_WEIGHT, size)
+}
+
+pub(crate) fn cell_height(size: noto_sans_mono_bitmap::RasterHeight) -> usize {
+    let height = match size {
+        noto_sans_mono_bitmap::RasterHeight::Size16 => 16,
+        noto_sans_mono_bitmap::RasterHeight::Size20 => 20,
+        noto_sans_mono_bitmap::RasterHeight::Size24 => 24,
+        noto_sans_mono_bitmap::RasterHeight::Size32 => 32,
+    };
+    height + 2
+}
+
 #[cfg(test)]
 mod tests {
     use alloc::vec;

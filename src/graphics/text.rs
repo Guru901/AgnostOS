@@ -2,20 +2,22 @@ use noto_sans_mono_bitmap::{RasterHeight, RasterizedChar, get_raster};
 
 use crate::{FONT_HEIGHT, FONT_WEIGHT, color::Color};
 
-use super::{Framebuffer, PixelCoord};
+use super::Framebuffer;
 
 pub fn draw_text(
     fb: &Framebuffer,
     text: &str,
-    origin: PixelCoord,
+    column: usize,
+    row: usize,
     color: Color,
     font_height: Option<RasterHeight>,
 ) {
     if !fb.is_drawable() {
         return;
     }
-    let mut cursor_x = origin.x();
     let font_height = font_height.unwrap_or(FONT_HEIGHT);
+    let mut cursor_x = column * crate::graphics::cell_width(font_height);
+    let origin_y = row * crate::graphics::cell_height(font_height);
     for ch in text.chars() {
         if ch == '\n' {
             break;
@@ -25,7 +27,7 @@ pub fn draw_text(
         else {
             continue;
         };
-        draw_glyph(fb, &raster, cursor_x, origin.y(), color);
+        draw_glyph(fb, &raster, cursor_x, origin_y, color);
         let Some(next_x) = cursor_x.checked_add(raster.width()) else {
             return;
         };

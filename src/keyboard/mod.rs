@@ -39,6 +39,8 @@ pub(crate) enum KeyboardEvent {
     ZoomOut,
     ArrowUp,
     ArrowDown,
+    ArrowLeft,
+    ArrowRight,
     CtrlL,
     Tab,
 }
@@ -56,12 +58,23 @@ pub(crate) fn poll() -> Option<KeyboardEvent> {
             *CTRL_HELD.lock() = key_event.state == KeyState::Down;
             return None;
         }
+
+        KeyCode::ArrowLeft if key_event.state == KeyState::Down => {
+            return Some(KeyboardEvent::ArrowLeft);
+        }
+
+        KeyCode::ArrowRight if key_event.state == KeyState::Down => {
+            return Some(KeyboardEvent::ArrowRight);
+        }
+
         KeyCode::ArrowUp if key_event.state == KeyState::Down => {
             return Some(KeyboardEvent::ArrowUp);
         }
+
         KeyCode::ArrowDown if key_event.state == KeyState::Down => {
             return Some(KeyboardEvent::ArrowDown);
         }
+
         KeyCode::Tab if key_event.state == KeyState::Down => {
             return Some(KeyboardEvent::Tab);
         }
