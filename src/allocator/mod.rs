@@ -7,6 +7,15 @@ use uefi::mem::memory_map::MemoryMap;
 
 use crate::{BOOT_SERVICES_EXITED, HEAP_SIZE, HEAP_START};
 
+#[cfg(all(feature = "uefi-bin", feature = "custom-allocator"))]
+#[global_allocator]
+pub static ALLOCATOR: AgnostOSAllocator = AgnostOSAllocator::new();
+
+#[cfg(all(feature = "uefi-bin", not(feature = "custom-allocator")))]
+#[global_allocator]
+pub static ALLOCATOR: linked_list_allocator::LockedHeap =
+    linked_list_allocator::LockedHeap::empty();
+
 /// An exclusively owned conventional-memory range selected for the kernel heap.
 ///
 /// Its address and length are deliberately kept private: only allocator setup
@@ -88,6 +97,26 @@ pub fn initialize_linked_list_allocator(
     // conventional memory by `initialize_heap`.
     unsafe {
         allocator.lock().init(region.start as *mut u8, region.size);
+    }
+}
+
+/// Installs the selected global allocator over an owned heap region.
+pub fn initialize_global(region: HeapRegion) -> Result<(), HeapError> {
+    #[cfg(all(feature = "uefi-bin", feature = "custom-allocator"))]
+    {
+        ALLOCATOR.init(region)
+    }
+
+    #[cfg(all(feature = "uefi-bin", not(feature = "custom-allocator")))]
+    {
+        initialize_linked_list_allocator(&ALLOCATOR, region);
+        Ok(())
+    }
+
+    #[cfg(not(feature = "uefi-bin"))]
+    {
+        let _ = region;
+        Ok(())
     }
 }
 

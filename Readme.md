@@ -49,6 +49,9 @@ target/x86_64-unknown-uefi/release/agnostos.efi
 ## Project status
 
 This is an experimental learning project, not a production operating system.
+See the [kernel readiness checklist](docs/KERNEL_READINESS.md) for the current
+kernel boundary and the work required for a more complete operating-system
+kernel.
 
 ## Contributing
 

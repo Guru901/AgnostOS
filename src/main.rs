@@ -1,73 +1,12 @@
 #![no_main]
 #![no_std]
 
-extern crate alloc;
-
-use agnostos::{
-    allocator, boot_services_exited, console, graphics::Framebuffer, idt, kprintln, shell,
-    uefi_graphics,
-};
-
-#[cfg(feature = "custom-allocator")]
-use agnostos::allocator::AgnostOSAllocator;
-
-#[cfg(not(feature = "custom-allocator"))]
-use linked_list_allocator::LockedHeap;
-
+use agnostos::{boot, boot_services_exited, kprintln};
 use uefi::prelude::*;
-
-#[cfg(feature = "custom-allocator")]
-#[global_allocator]
-pub static ALLOCATOR: AgnostOSAllocator = AgnostOSAllocator::new();
-
-#[cfg(not(feature = "custom-allocator"))]
-#[global_allocator]
-pub static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 #[entry]
 fn main() -> Status {
-    if let Err(error) = uefi::helpers::init() {
-        return error.status();
-    }
-
-    let mut gop = match uefi_graphics::init_gop() {
-        Ok(gop) => gop,
-        Err(error) => return error.status(),
-    };
-    let fb = match Framebuffer::new(&mut gop) {
-        Ok(fb) => fb,
-        Err(error) => {
-            uefi::println!("Unsupported framebuffer configuration: {error:?}");
-            return Status::UNSUPPORTED;
-        }
-    };
-
-    console::init(fb);
-    uefi::println!("Exiting boot services in 1 seconds...");
-
-    let heap_region = match allocator::initialize_heap() {
-        Ok(region) => region,
-        Err(error) => fatal_after_boot("heap initialization failed", error),
-    };
-
-    #[cfg(feature = "custom-allocator")]
-    if let Err(error) = ALLOCATOR.init(heap_region) {
-        fatal_after_boot("custom allocator initialization failed", error);
-    }
-
-    #[cfg(not(feature = "custom-allocator"))]
-    allocator::initialize_linked_list_allocator(&ALLOCATOR, heap_region);
-
-    idt::init();
-    x86_64::instructions::interrupts::enable();
-
-    shell::init()
-}
-
-fn fatal_after_boot(_message: &str, _detail: impl core::fmt::Debug) -> ! {
-    loop {
-        x86_64::instructions::hlt();
-    }
+    boot::initialize()
 }
 
 #[panic_handler]
