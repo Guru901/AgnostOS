@@ -12,12 +12,6 @@
 //! - Block cursor rendering
 //! - Backspace with visual erase
 
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
-use core::fmt;
-use noto_sans_mono_bitmap::{RasterHeight, get_raster_width};
-use spin::Mutex;
-
 use crate::commands;
 use crate::{
     FONT_WEIGHT, PROMPT, color,
@@ -26,6 +20,11 @@ use crate::{
         pixel::{PixelCoord, PixelRows, PixelSize},
     },
 };
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+use core::fmt;
+use noto_sans_mono_bitmap::{RasterHeight, get_raster_width};
+use spin::Mutex;
 
 /// Internal writer state. Holds everything needed to render text to the
 /// framebuffer and track terminal state across keystrokes.
@@ -223,7 +222,6 @@ pub(crate) fn reset() {
         writer.column = 0;
         writer.row = 0;
         writer.glyph_cells.clear();
-        writer.history.clear();
         writer.current_line.clear();
         writer.input_cursor = 0;
         writer.history_index = None;
