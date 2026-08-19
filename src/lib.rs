@@ -5,6 +5,9 @@ extern crate alloc;
 /// Module that contains the code for our custom allocator.
 pub mod allocator;
 
+/// Ordered kernel startup sequence and UEFI hand-off.
+pub mod boot;
+
 pub(crate) mod constants;
 pub(crate) use constants::*;
 pub(crate) mod platform;

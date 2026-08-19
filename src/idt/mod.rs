@@ -32,6 +32,7 @@ pub fn init() {
         install_idt();
         initialize_hardware();
     });
+    x86_64::instructions::interrupts::enable();
 }
 
 /// Host builds do not install an IDT because they never execute kernel code.

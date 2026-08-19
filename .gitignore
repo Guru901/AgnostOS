@@ -1,4 +1,5 @@
 /esp/*
 /target/*
 /docs/*
+!/docs/KERNEL_READINESS.md
 .DS_Store
