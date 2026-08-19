@@ -26,8 +26,8 @@ building substantial storage or user-program support.
 
 ### 1. Preserve the memory map
 
-- [ ] Copy or transform the UEFI memory map into kernel-owned data before
-  `exit_boot_services` returns.
+- [ ] Copy or transform the memory map returned by `exit_boot_services` into
+  kernel-owned data before discarding it.
 - [ ] Classify usable, reserved, firmware, kernel, framebuffer, and ACPI
   ranges.
 - [ ] Reserve the kernel image, boot data, page tables, stacks, and devices.
