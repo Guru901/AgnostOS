@@ -4,6 +4,8 @@
 //! them to the appropriate console or command handler. Commands are parsed
 //! into a name, optional flags (prefixed with `-`), and positional arguments.
 
+use core::sync::atomic::Ordering;
+
 use alloc::string::String;
 
 #[cfg(feature = "mouse")]
@@ -12,9 +14,13 @@ use crate::{
     PROMPT,
     commands::run_command,
     console,
-    keyboard::{self, KeyboardEvent},
+    keyboard::{self, KEYBOARD_DROPPED, KeyboardEvent},
     kprint, kprintln,
+    timer::ticks,
 };
+
+#[cfg(feature = "mouse")]
+use crate::mouse::MOUSE_DROPPED;
 
 #[cfg(feature = "mouse")]
 use crate::graphics::PixelCoord;
@@ -43,6 +49,9 @@ pub fn init() -> ! {
     console::draw_cursor();
 
     loop {
+        // TODO(input): add QEMU smoke coverage for ordinary keys, modifiers,
+        // arrows, FIFO ordering, and queue overflow before relying on this
+        // polling path as the long-term input implementation.
         #[cfg(feature = "mouse")]
         {
             if let Some(event) = mouse::poll() {
@@ -60,6 +69,25 @@ pub fn init() -> ! {
                 });
             }
         }
+
+        // Just for now.. edit it later
+        if ticks().is_multiple_of(100) {
+            let keyboard_dropped = KEYBOARD_DROPPED.swap(0, Ordering::Relaxed);
+
+            if keyboard_dropped > 0 {
+                kprintln!("Dropped {} keyboard inputs", keyboard_dropped);
+            }
+
+            #[cfg(feature = "mouse")]
+            {
+                let mouse_dropped = MOUSE_DROPPED.swap(0, Ordering::Relaxed);
+
+                if mouse_dropped > 0 {
+                    kprintln!("Dropped {} mouse inputs", mouse_dropped);
+                }
+            }
+        }
+
         if let Some(key) = keyboard::poll() {
             console::erase_cursor();
 

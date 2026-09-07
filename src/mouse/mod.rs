@@ -1,10 +1,16 @@
-use crate::platform::ring_buffer::RingBuffer;
+use core::sync::atomic::{AtomicUsize, Ordering};
+
 use crate::{
     color::{self, Color},
     graphics::{self, Framebuffer, PixelCoord, PixelSize},
     idt::{PS2_COMMAND, PS2_DATA, PS2_STATUS, inb, outb},
 };
+use ringbuf::{
+    StaticCons, StaticProd, StaticRb,
+    traits::{Consumer, Producer, SplitRef},
+};
 use spin::Mutex;
+use static_cell::StaticCell;
 
 pub(crate) const MOUSE_CURSOR_SIZE: PixelSize = PixelSize::new(5, 5);
 const MOUSE_CURSOR_PIXELS: usize = 25;
@@ -15,6 +21,22 @@ const MOUSE_CURSOR_PIXELS: usize = 25;
 struct MouseCursor {
     position: Option<(usize, usize)>,
     saved_under: [Color; MOUSE_CURSOR_PIXELS],
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct MouseByte(u8);
+
+impl MouseByte {
+    #[must_use]
+    pub(crate) const fn new(value: u8) -> Self {
+        Self(value)
+    }
+
+    #[must_use]
+    #[allow(dead_code)]
+    const fn get(self) -> u8 {
+        self.0
+    }
 }
 
 static MOUSE_CURSOR: Mutex<MouseCursor> = Mutex::new(MouseCursor {
@@ -96,7 +118,59 @@ mod tests {
     }
 }
 
-pub(crate) static MOUSE_QUEUE: Mutex<RingBuffer<u8, 256>> = Mutex::new(RingBuffer::new());
+const RB_SIZE: usize = 256;
+pub(crate) static MOUSE_QUEUE: StaticCell<StaticRb<MouseByte, RB_SIZE>> = StaticCell::new();
+pub(crate) static MOUSE_PRODUCER_CELL: StaticCell<StaticProd<'static, MouseByte, RB_SIZE>> =
+    StaticCell::new();
+pub(crate) static MOUSE_CONSUMER_CELL: StaticCell<StaticCons<'static, MouseByte, RB_SIZE>> =
+    StaticCell::new();
+
+pub(crate) static MOUSE_DROPPED: AtomicUsize = AtomicUsize::new(0);
+// filled in once at startup, read from thereafter without re-locking
+static mut MOUSE_PRODUCER: Option<&'static mut StaticProd<'static, MouseByte, RB_SIZE>> = None;
+static mut MOUSE_CONSUMER: Option<&'static mut StaticCons<'static, MouseByte, RB_SIZE>> = None;
+
+pub(crate) fn init_mouse() {
+    let rb = MOUSE_QUEUE.init(StaticRb::default());
+    let (producer, consumer) = rb.split_ref();
+
+    // SAFETY: this function runs exactly once, before interrupts are enabled
+    // and before the producer/consumer can be accessed from anywhere else,
+    // so there is no concurrent access to PRODUCER/CONSUMER at this point.
+    unsafe {
+        MOUSE_PRODUCER = Some(MOUSE_PRODUCER_CELL.init(producer));
+        MOUSE_CONSUMER = Some(MOUSE_CONSUMER_CELL.init(consumer));
+    }
+}
+
+// Call from the mouse interrupt handler.
+pub(crate) fn push_mouse_byte(code: MouseByte) {
+    // SAFETY: PRODUCER is only ever accessed from this function, which is only
+    // ever called from the mouse interrupt handler. That handler cannot
+    // preempt itself (interrupts of the same priority don't nest), so this is
+    // the sole, non-reentrant writer of PRODUCER — no other code reads or
+    // writes it, so there is no data race despite the raw static access.
+    unsafe {
+        if let Some(p) = &mut *core::ptr::addr_of_mut!(MOUSE_PRODUCER)
+            && p.try_push(code).is_err()
+        {
+            MOUSE_DROPPED.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+// call from wherever pops (e.g. main loop)
+pub(crate) fn pop_mouse_byte() -> Option<MouseByte> {
+    // SAFETY: CONSUMER is only ever accessed from this function, which is only
+    // ever called from the main loop (never from an interrupt context), so
+    // there is a single, non-reentrant reader/writer of CONSUMER and no
+    // concurrent access with the disjoint producer.
+    unsafe {
+        (&mut *core::ptr::addr_of_mut!(MOUSE_CONSUMER))
+            .as_mut()?
+            .try_pop()
+    }
+}
 
 struct PacketState {
     bytes: [u8; 3],
@@ -123,6 +197,7 @@ impl MouseDelta {
     }
 }
 
+#[allow(dead_code)] // Button state is decoded now; shell actions will consume it later.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct MouseEvent {
     pub(crate) dx: MouseDelta,
@@ -132,33 +207,14 @@ pub(crate) struct MouseEvent {
     middle: bool,
 }
 
-pub(crate) fn poll() -> Option<MouseEvent> {
-    let byte = crate::platform::without_interrupts(|| MOUSE_QUEUE.lock().pop())?;
-    let mut state = PACKET_STATE.lock();
-
-    // Byte 0 of a valid packet always has bit 3 set. If we're expecting a
-    // byte 0 and don't see that bit, we're out of sync (e.g. missed a byte
-    // to a full queue) — drop it and wait for a real packet start.
-    if state.index == 0 && byte & 0b0000_1000 == 0 {
-        return None;
-    }
-
-    let index = state.index;
-    state.bytes[index] = byte;
-
-    state.index += 1;
-
-    if state.index < 3 {
-        return None;
-    }
-
-    state.index = 0;
-    let flags = state.bytes[0];
+fn decode_packet(packet: [u8; 3]) -> Option<MouseEvent> {
+    let flags = packet[0];
     if flags & 0b1100_0000 != 0 {
         return None;
     }
-    let mut dx = state.bytes[1] as i16;
-    let mut dy = state.bytes[2] as i16;
+
+    let mut dx = packet[1] as i16;
+    let mut dy = packet[2] as i16;
 
     // Sign-extend using the sign bits carried in byte 0.
     if flags & 0b0001_0000 != 0 {
@@ -178,6 +234,87 @@ pub(crate) fn poll() -> Option<MouseEvent> {
         right: flags & 0b0000_0010 != 0,
         middle: flags & 0b0000_0100 != 0,
     })
+}
+
+pub(crate) fn poll() -> Option<MouseEvent> {
+    let byte = pop_mouse_byte()?.get();
+    let mut state = PACKET_STATE.lock();
+
+    // Byte 0 of a valid packet always has bit 3 set. If we're expecting a
+    // byte 0 and don't see that bit, we're out of sync (e.g. missed a byte
+    // to a full queue) — drop it and wait for a real packet start.
+    if state.index == 0 && byte & 0b0000_1000 == 0 {
+        return None;
+    }
+
+    let index = state.index;
+    state.bytes[index] = byte;
+
+    state.index += 1;
+
+    if state.index < 3 {
+        return None;
+    }
+
+    state.index = 0;
+    decode_packet(state.bytes)
+}
+
+#[cfg(test)]
+mod packet_tests {
+    use super::*;
+
+    #[test]
+    fn decodes_signed_motion_and_buttons() {
+        let event = decode_packet([0b0011_0111, 0xfe, 0xfd]).unwrap();
+
+        assert_eq!(event.dx.get(), -2);
+        assert_eq!(event.dy.get(), 3);
+        assert!(event.left);
+        assert!(event.right);
+        assert!(event.middle);
+    }
+
+    #[test]
+    fn rejects_invalid_packet_overflow_bits() {
+        assert!(decode_packet([0b1100_1000, 0, 0]).is_none());
+    }
+}
+
+#[cfg(test)]
+mod queue_tests {
+    use super::*;
+    use ringbuf::traits::{Consumer, Producer, SplitRef};
+
+    #[test]
+    fn queue_preserves_fifo_order_across_wraparound() {
+        let mut queue = StaticRb::<MouseByte, 2>::default();
+        let (mut producer, mut consumer) = queue.split_ref();
+
+        producer.try_push(MouseByte::new(1)).unwrap();
+        producer.try_push(MouseByte::new(2)).unwrap();
+        assert_eq!(consumer.try_pop().map(|byte| byte.0), Some(1));
+        producer.try_push(MouseByte::new(3)).unwrap();
+
+        assert_eq!(consumer.try_pop().map(|byte| byte.0), Some(2));
+        assert_eq!(consumer.try_pop().map(|byte| byte.0), Some(3));
+        assert_eq!(consumer.try_pop(), None);
+    }
+
+    #[test]
+    fn full_queue_rejects_new_mouse_bytes_and_counts_them() {
+        let mut queue = StaticRb::<MouseByte, 2>::default();
+        let (mut producer, _) = queue.split_ref();
+        let mut dropped = 0;
+
+        producer.try_push(MouseByte::new(1)).unwrap();
+        producer.try_push(MouseByte::new(2)).unwrap();
+        if producer.try_push(MouseByte::new(3)).is_err() {
+            dropped += 1;
+        }
+
+        assert_eq!(dropped, 1);
+    }
 }
 
 const PS2_READY_POLL_LIMIT: usize = 100_000;

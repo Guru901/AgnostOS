@@ -9,15 +9,15 @@ use x86_64::{
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame},
 };
 
-#[cfg(target_arch = "x86_64")]
-use crate::kprintln;
 #[cfg(all(target_arch = "x86_64", feature = "mouse"))]
-use crate::mouse::{MOUSE_QUEUE, initialize_controller};
+use crate::mouse::{MouseByte, init_mouse, initialize_controller, push_mouse_byte};
 #[cfg(target_arch = "x86_64")]
 use crate::{
     TICKS,
-    keyboard::{KEYBOARD_QUEUE, Scancode},
+    keyboard::{KeyboardScancode, push_keyboard_scancode},
 };
+#[cfg(target_arch = "x86_64")]
+use crate::{keyboard::init_keyboard, kprintln};
 
 #[cfg(target_arch = "x86_64")]
 static IDT: Once<InterruptDescriptorTable> = Once::new();
@@ -31,6 +31,9 @@ pub fn init() {
     crate::platform::without_interrupts(|| {
         install_idt();
         initialize_hardware();
+        init_keyboard();
+        #[cfg(feature = "mouse")]
+        init_mouse();
     });
     x86_64::instructions::interrupts::enable();
 }
@@ -238,10 +241,7 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
     // SAFETY: IRQ1 is dispatched only after PIC setup, and `0x60` is the PS/2
     // data port associated with this interrupt.
     let code = unsafe { inb(PS2_DATA) };
-
-    crate::platform::without_interrupts(|| {
-        KEYBOARD_QUEUE.lock().push(Scancode::new(code));
-    });
+    push_keyboard_scancode(KeyboardScancode::new(code));
 
     acknowledge_master_pic();
 }
@@ -252,9 +252,9 @@ extern "x86-interrupt" fn mouse_interrupt_handler(_stack_frame: InterruptStackFr
     // the controller data port carrying the mouse byte.
     let byte = unsafe { inb(PS2_DATA) };
 
-    x86_64::instructions::interrupts::without_interrupts(|| {
-        MOUSE_QUEUE.lock().push(byte);
-    });
+    // Keep this handler allocation-free and logging-free. Dropped bytes are
+    // counted atomically and reported later outside interrupt context.
+    push_mouse_byte(MouseByte::new(byte));
 
     acknowledge_slave_pic();
 }

@@ -31,7 +31,11 @@ jobs:
         run: |
           rustup toolchain install nightly-2026-08-01 --profile minimal
           rustup target add x86_64-unknown-uefi --toolchain nightly-2026-08-01
-          rustup component add rust-src --toolchain nightly-2026-08-01
+          rustup component add \
+            clippy \
+            rust-src \
+            rustfmt \
+            --toolchain nightly-2026-08-01
 
       - name: Show Rust version
         run: |
@@ -40,6 +44,37 @@ jobs:
 
       - name: Clean
         run: cargo +nightly-2026-08-01 clean
+
+      - name: Check formatting
+        run: cargo +nightly-2026-08-01 fmt --all -- --check
+
+      - name: Run host tests
+        run: |
+          TEST_WORKDIR="$(mktemp -d)"
+          trap 'rm -rf "$TEST_WORKDIR"' EXIT
+          cd "$TEST_WORKDIR"
+          cargo +nightly-2026-08-01 test \
+            --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" \
+            --features mouse
+          cargo +nightly-2026-08-01 test \
+            --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" \
+            --no-default-features \
+            --features custom-allocator,mouse
+
+      - name: Run Clippy
+        run: |
+          CLIPPY_WORKDIR="$(mktemp -d)"
+          trap 'rm -rf "$CLIPPY_WORKDIR"' EXIT
+          cd "$CLIPPY_WORKDIR"
+          cargo +nightly-2026-08-01 clippy \
+            --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" \
+            --features mouse \
+            -- -D warnings
+          cargo +nightly-2026-08-01 clippy \
+            --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" \
+            --no-default-features \
+            --features custom-allocator,mouse \
+            -- -D warnings
 
       - name: Build
         run: |
