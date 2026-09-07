@@ -10,7 +10,7 @@ use x86_64::{
 };
 
 #[cfg(all(target_arch = "x86_64", feature = "mouse"))]
-use crate::mouse::{MouseByte, initialize_controller, push_mouse_byte};
+use crate::mouse::{MouseByte, init_mouse, initialize_controller, push_mouse_byte};
 #[cfg(target_arch = "x86_64")]
 use crate::{
     TICKS,
@@ -18,8 +18,6 @@ use crate::{
 };
 #[cfg(target_arch = "x86_64")]
 use crate::{keyboard::init_keyboard, kprintln};
-#[cfg(all(target_arch = "x86_64", feature = "mouse"))]
-use crate::mouse::init_mouse;
 
 #[cfg(target_arch = "x86_64")]
 static IDT: Once<InterruptDescriptorTable> = Once::new();

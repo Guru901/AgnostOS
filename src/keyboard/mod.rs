@@ -69,10 +69,10 @@ pub(crate) fn push_keyboard_scancode(code: KeyboardScancode) {
     // the sole, non-reentrant writer of PRODUCER — no other code reads or
     // writes it, so there is no data race despite the raw static access.
     unsafe {
-        if let Some(p) = &mut *core::ptr::addr_of_mut!(KEYBOARD_PRODUCER) {
-            if let Err(_) = p.try_push(code) {
-                KEYBOARD_DROPPED.fetch_add(1, Ordering::Relaxed);
-            }
+        if let Some(p) = &mut *core::ptr::addr_of_mut!(KEYBOARD_PRODUCER)
+            && p.try_push(code).is_err()
+        {
+            KEYBOARD_DROPPED.fetch_add(1, Ordering::Relaxed);
         }
     }
 }

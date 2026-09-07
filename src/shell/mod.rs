@@ -71,7 +71,7 @@ pub fn init() -> ! {
         }
 
         // Just for now.. edit it later
-        if ticks() % 100 == 0 {
+        if ticks().is_multiple_of(100) {
             let keyboard_dropped = KEYBOARD_DROPPED.swap(0, Ordering::Relaxed);
 
             if keyboard_dropped > 0 {

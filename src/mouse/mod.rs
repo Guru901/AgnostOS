@@ -151,10 +151,10 @@ pub(crate) fn push_mouse_byte(code: MouseByte) {
     // the sole, non-reentrant writer of PRODUCER — no other code reads or
     // writes it, so there is no data race despite the raw static access.
     unsafe {
-        if let Some(p) = &mut *core::ptr::addr_of_mut!(MOUSE_PRODUCER) {
-            if let Err(_) = p.try_push(code) {
-                MOUSE_DROPPED.fetch_add(1, Ordering::Relaxed);
-            }
+        if let Some(p) = &mut *core::ptr::addr_of_mut!(MOUSE_PRODUCER)
+            && p.try_push(code).is_err()
+        {
+            MOUSE_DROPPED.fetch_add(1, Ordering::Relaxed);
         }
     }
 }
@@ -197,6 +197,7 @@ impl MouseDelta {
     }
 }
 
+#[allow(dead_code)] // Button state is decoded now; shell actions will consume it later.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct MouseEvent {
     pub(crate) dx: MouseDelta,
@@ -204,6 +205,35 @@ pub(crate) struct MouseEvent {
     left: bool,
     right: bool,
     middle: bool,
+}
+
+fn decode_packet(packet: [u8; 3]) -> Option<MouseEvent> {
+    let flags = packet[0];
+    if flags & 0b1100_0000 != 0 {
+        return None;
+    }
+
+    let mut dx = packet[1] as i16;
+    let mut dy = packet[2] as i16;
+
+    // Sign-extend using the sign bits carried in byte 0.
+    if flags & 0b0001_0000 != 0 {
+        dx -= 256;
+    }
+    if flags & 0b0010_0000 != 0 {
+        dy -= 256;
+    }
+    // PS/2 reports +Y as "up"; invert to match typical screen coordinates
+    // where +Y is "down".
+    dy = -dy;
+
+    Some(MouseEvent {
+        dx: MouseDelta::new(dx),
+        dy: MouseDelta::new(dy),
+        left: flags & 0b0000_0001 != 0,
+        right: flags & 0b0000_0010 != 0,
+        middle: flags & 0b0000_0100 != 0,
+    })
 }
 
 pub(crate) fn poll() -> Option<MouseEvent> {

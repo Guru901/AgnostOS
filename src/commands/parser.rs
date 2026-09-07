@@ -44,7 +44,7 @@ pub(crate) struct ParsedCommand<'a> {
 }
 
 pub(crate) fn parse(input: &str) -> ParsedCommand<'_> {
-    let mut tokens = input.trim().split_whitespace();
+    let mut tokens = input.split_whitespace();
     let command = match tokens.next().unwrap_or("") {
         "help" => Command::Help,
         "about" => Command::About,
