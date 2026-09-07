@@ -1,7 +1,5 @@
 //! Target-specific CPU operations with safe host-test fallbacks.
 
-pub(crate) mod ring_buffer;
-
 /// Runs `operation` with interrupts disabled on the x86_64 kernel target.
 /// Host tests have no hardware interrupts, so they simply run the operation.
 #[inline]
