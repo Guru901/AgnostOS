@@ -23,7 +23,7 @@ struct MouseCursor {
     saved_under: [Color; MOUSE_CURSOR_PIXELS],
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct MouseByte(u8);
 
 impl MouseByte {
@@ -257,31 +257,64 @@ pub(crate) fn poll() -> Option<MouseEvent> {
     }
 
     state.index = 0;
-    let flags = state.bytes[0];
-    if flags & 0b1100_0000 != 0 {
-        return None;
-    }
-    let mut dx = state.bytes[1] as i16;
-    let mut dy = state.bytes[2] as i16;
+    decode_packet(state.bytes)
+}
 
-    // Sign-extend using the sign bits carried in byte 0.
-    if flags & 0b0001_0000 != 0 {
-        dx -= 256;
-    }
-    if flags & 0b0010_0000 != 0 {
-        dy -= 256;
-    }
-    // PS/2 reports +Y as "up"; invert to match typical screen coordinates
-    // where +Y is "down".
-    dy = -dy;
+#[cfg(test)]
+mod packet_tests {
+    use super::*;
 
-    Some(MouseEvent {
-        dx: MouseDelta::new(dx),
-        dy: MouseDelta::new(dy),
-        left: flags & 0b0000_0001 != 0,
-        right: flags & 0b0000_0010 != 0,
-        middle: flags & 0b0000_0100 != 0,
-    })
+    #[test]
+    fn decodes_signed_motion_and_buttons() {
+        let event = decode_packet([0b0011_0111, 0xfe, 0xfd]).unwrap();
+
+        assert_eq!(event.dx.get(), -2);
+        assert_eq!(event.dy.get(), 3);
+        assert!(event.left);
+        assert!(event.right);
+        assert!(event.middle);
+    }
+
+    #[test]
+    fn rejects_invalid_packet_overflow_bits() {
+        assert!(decode_packet([0b1100_1000, 0, 0]).is_none());
+    }
+}
+
+#[cfg(test)]
+mod queue_tests {
+    use super::*;
+    use ringbuf::traits::{Consumer, Producer, SplitRef};
+
+    #[test]
+    fn queue_preserves_fifo_order_across_wraparound() {
+        let mut queue = StaticRb::<MouseByte, 2>::default();
+        let (mut producer, mut consumer) = queue.split_ref();
+
+        producer.try_push(MouseByte::new(1)).unwrap();
+        producer.try_push(MouseByte::new(2)).unwrap();
+        assert_eq!(consumer.try_pop().map(|byte| byte.0), Some(1));
+        producer.try_push(MouseByte::new(3)).unwrap();
+
+        assert_eq!(consumer.try_pop().map(|byte| byte.0), Some(2));
+        assert_eq!(consumer.try_pop().map(|byte| byte.0), Some(3));
+        assert_eq!(consumer.try_pop(), None);
+    }
+
+    #[test]
+    fn full_queue_rejects_new_mouse_bytes_and_counts_them() {
+        let mut queue = StaticRb::<MouseByte, 2>::default();
+        let (mut producer, _) = queue.split_ref();
+        let mut dropped = 0;
+
+        producer.try_push(MouseByte::new(1)).unwrap();
+        producer.try_push(MouseByte::new(2)).unwrap();
+        if producer.try_push(MouseByte::new(3)).is_err() {
+            dropped += 1;
+        }
+
+        assert_eq!(dropped, 1);
+    }
 }
 
 const PS2_READY_POLL_LIMIT: usize = 100_000;

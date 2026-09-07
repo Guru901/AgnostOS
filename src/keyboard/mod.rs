@@ -10,7 +10,7 @@ use ringbuf::{
 use spin::Mutex;
 use static_cell::StaticCell;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct KeyboardScancode(u8);
 
 impl KeyboardScancode {
@@ -167,4 +167,63 @@ pub(crate) fn poll() -> Option<KeyboardEvent> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod queue_tests {
+    use super::*;
+    use ringbuf::traits::{Consumer, Producer, SplitRef};
+
+    #[test]
+    fn decoder_handles_printable_keys_modifiers_and_arrows() {
+        let mut decoder = PS2Keyboard::new(
+            ScancodeSet1::new(),
+            layouts::Us104Key,
+            HandleControl::Ignore,
+        );
+
+        let key = decoder.add_byte(0x1e).unwrap().unwrap();
+        assert_eq!(key.code, KeyCode::A);
+        assert_eq!(key.state, KeyState::Down);
+
+        let control = decoder.add_byte(0x1d).unwrap().unwrap();
+        assert_eq!(control.code, KeyCode::LControl);
+        assert_eq!(control.state, KeyState::Down);
+
+        let arrow_up = decoder.add_byte(0xe0).unwrap();
+        assert!(arrow_up.is_none());
+        let arrow_up = decoder.add_byte(0x48).unwrap().unwrap();
+        assert_eq!(arrow_up.code, KeyCode::ArrowUp);
+        assert_eq!(arrow_up.state, KeyState::Down);
+    }
+
+    #[test]
+    fn queue_preserves_fifo_order_across_wraparound() {
+        let mut queue = StaticRb::<KeyboardScancode, 2>::default();
+        let (mut producer, mut consumer) = queue.split_ref();
+
+        producer.try_push(KeyboardScancode::new(1)).unwrap();
+        producer.try_push(KeyboardScancode::new(2)).unwrap();
+        assert_eq!(consumer.try_pop().map(|code| code.0), Some(1));
+        producer.try_push(KeyboardScancode::new(3)).unwrap();
+
+        assert_eq!(consumer.try_pop().map(|code| code.0), Some(2));
+        assert_eq!(consumer.try_pop().map(|code| code.0), Some(3));
+        assert_eq!(consumer.try_pop(), None);
+    }
+
+    #[test]
+    fn full_queue_rejects_new_scancodes_and_counts_them() {
+        let mut queue = StaticRb::<KeyboardScancode, 2>::default();
+        let (mut producer, _) = queue.split_ref();
+        let mut dropped = 0;
+
+        producer.try_push(KeyboardScancode::new(1)).unwrap();
+        producer.try_push(KeyboardScancode::new(2)).unwrap();
+        if producer.try_push(KeyboardScancode::new(3)).is_err() {
+            dropped += 1;
+        }
+
+        assert_eq!(dropped, 1);
+    }
 }
