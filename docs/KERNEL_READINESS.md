@@ -68,9 +68,8 @@ shared-state rules, and failure behaviour are defined.
 
 ### 4. Make interrupts and time dependable
 
-- [ ] Add a timer source and calibrate its tick-to-time conversion.
-- [ ] Make `uptime` report real units; currently the timer API treats ticks as
-  milliseconds.
+- [x] Add a timer source and calibrate its tick-to-time conversion.
+- [x] Make `uptime` report real units from the PIT's programmed divisor.
 - [ ] Implement an idle path using `hlt` without a check-then-sleep race.
 - [ ] Track interrupt nesting and document which locks/operations are legal in
   interrupt context.
