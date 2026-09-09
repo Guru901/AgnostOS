@@ -32,7 +32,8 @@ pub(super) fn install() {
         idt.page_fault.set_handler_fn(handlers::page_fault);
         idt.x87_floating_point
             .set_handler_fn(handlers::x87_floating_point);
-        idt.alignment_check.set_handler_fn(handlers::alignment_check);
+        idt.alignment_check
+            .set_handler_fn(handlers::alignment_check);
         idt.machine_check.set_handler_fn(handlers::machine_check);
         idt.simd_floating_point
             .set_handler_fn(handlers::simd_floating_point);

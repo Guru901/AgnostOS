@@ -7,9 +7,13 @@ use x86_64::{
     structures::idt::{InterruptStackFrame, PageFaultErrorCode},
 };
 
-use crate::{TICKS, keyboard::{KeyboardScancode, push_keyboard_scancode}, kprintln};
 #[cfg(feature = "mouse")]
 use crate::mouse::{MouseByte, push_mouse_byte};
+use crate::{
+    TICKS,
+    keyboard::{KeyboardScancode, push_keyboard_scancode},
+    kprintln,
+};
 
 use super::{PS2_DATA, inb, pic};
 
@@ -86,9 +90,7 @@ pub(super) extern "x86-interrupt" fn page_fault(
     error_code: PageFaultErrorCode,
 ) {
     let address = Cr2::read_raw();
-    kprintln!(
-        "\nEXCEPTION: page fault at {address:#x} ({error_code:?})\n{stack_frame:#?}"
-    );
+    kprintln!("\nEXCEPTION: page fault at {address:#x} ({error_code:?})\n{stack_frame:#?}");
     halt()
 }
 
