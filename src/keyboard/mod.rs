@@ -63,16 +63,31 @@ pub(crate) fn init_keyboard() {
 
 // call from wherever pushes (e.g. keyboard interrupt handler)
 pub(crate) fn push_keyboard_scancode(code: KeyboardScancode) {
+    #[cfg(feature = "input-smoke")]
+    crate::input_smoke::keyboard_byte(code.0);
+
     // SAFETY: PRODUCER is only ever accessed from this function, which is only
     // ever called from the keyboard interrupt handler. That handler cannot
     // preempt itself (interrupts of the same priority don't nest), so this is
     // the sole, non-reentrant writer of PRODUCER — no other code reads or
     // writes it, so there is no data race despite the raw static access.
     unsafe {
-        if let Some(p) = &mut *core::ptr::addr_of_mut!(KEYBOARD_PRODUCER)
-            && p.try_push(code).is_err()
-        {
-            KEYBOARD_DROPPED.fetch_add(1, Ordering::Relaxed);
+        if let Some(p) = &mut *core::ptr::addr_of_mut!(KEYBOARD_PRODUCER) {
+            if p.try_push(code).is_err() {
+                KEYBOARD_DROPPED.fetch_add(1, Ordering::Relaxed);
+                #[cfg(feature = "input-smoke")]
+                crate::input_smoke::keyboard_overflow();
+            }
+
+            #[cfg(feature = "input-smoke")]
+            if crate::input_smoke::force_keyboard_overflow(code.0) {
+                for _ in 0..RB_SIZE {
+                    if p.try_push(code).is_err() {
+                        KEYBOARD_DROPPED.fetch_add(1, Ordering::Relaxed);
+                        crate::input_smoke::keyboard_overflow();
+                    }
+                }
+            }
         }
     }
 }

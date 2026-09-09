@@ -46,6 +46,23 @@ The resulting UEFI executable is written to:
 target/x86_64-unknown-uefi/release/agnostos.efi
 ```
 
+## Tests
+
+Run the host test suite with:
+
+```sh
+./scripts/test.sh
+```
+
+When QEMU is installed, this also runs a QEMU smoke test that injects keyboard
+and mouse events through QEMU's input API. It verifies normal keys,
+modifiers, arrow-key ordering, live keyboard-queue overflow handling, and a
+valid PS/2 mouse-motion packet. Run it directly with:
+
+```sh
+python3 scripts/qemu-input-smoke.py
+```
+
 ## Project status
 
 This is an experimental learning project, not a production operating system.

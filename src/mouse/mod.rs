@@ -145,6 +145,9 @@ pub(crate) fn init_mouse() {
 
 // Call from the mouse interrupt handler.
 pub(crate) fn push_mouse_byte(code: MouseByte) {
+    #[cfg(feature = "input-smoke")]
+    crate::input_smoke::mouse_byte(code.0);
+
     // SAFETY: PRODUCER is only ever accessed from this function, which is only
     // ever called from the mouse interrupt handler. That handler cannot
     // preempt itself (interrupts of the same priority don't nest), so this is
