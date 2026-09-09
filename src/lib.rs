@@ -18,8 +18,8 @@ pub fn boot_services_exited() -> bool {
     BOOT_SERVICES_EXITED.load(core::sync::atomic::Ordering::Relaxed)
 }
 
-/// Module that contains the code for interrupts
-pub mod idt;
+/// Interrupt controller setup, descriptor tables, and hardware IRQ handlers.
+pub mod interrupts;
 
 /// Module that contains the code for rendering things to the screen after exiting uefi boot
 /// services. It usses framebuffer to write the bytes directly
