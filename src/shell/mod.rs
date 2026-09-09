@@ -1,8 +1,9 @@
 //! Shell module — interactive command-line interface for AgnostOS.
 //!
-//! Provides a polling input loop that reads keyboard events and dispatches
-//! them to the appropriate console or command handler. Commands are parsed
-//! into a name, optional flags (prefixed with `-`), and positional arguments.
+//! Provides an interrupt-driven input loop that reads keyboard events and
+//! dispatches them to the appropriate console or command handler. Commands
+//! are parsed into a name, optional flags (prefixed with `-`), and positional
+//! arguments.
 
 use core::sync::atomic::Ordering;
 
@@ -27,8 +28,8 @@ use crate::graphics::PixelCoord;
 
 /// Initializes and runs the interactive shell. Never returns (`-> !`).
 ///
-/// Clears the screen, prints the initial prompt, and enters a polling loop
-/// that reads keyboard events and dispatches them:
+/// Clears the screen, prints the initial prompt, and enters an input loop that
+/// reads keyboard events and dispatches them:
 ///
 /// - Printable characters are echoed and appended to the current line buffer.
 /// - Enter runs the current line as a command via [`run_command`].
@@ -49,9 +50,6 @@ pub fn init() -> ! {
     console::draw_cursor();
 
     loop {
-        // TODO(input): add QEMU smoke coverage for ordinary keys, modifiers,
-        // arrows, FIFO ordering, and queue overflow before relying on this
-        // polling path as the long-term input implementation.
         #[cfg(feature = "mouse")]
         {
             if let Some(event) = mouse::poll() {
@@ -128,6 +126,26 @@ pub fn init() -> ! {
             }
 
             console::draw_cursor();
+        }
+
+        // Prevent an input IRQ from arriving after the queue check but before
+        // `hlt`. `enable_and_hlt` executes `sti; hlt`, whose interrupt shadow
+        // makes the enable-and-sleep transition atomic for maskable IRQs.
+        x86_64::instructions::interrupts::disable();
+        let input_queues_empty = keyboard::keyboard_queue_is_empty() && {
+            #[cfg(feature = "mouse")]
+            {
+                mouse::mouse_queue_is_empty()
+            }
+            #[cfg(not(feature = "mouse"))]
+            {
+                true
+            }
+        };
+        if input_queues_empty {
+            x86_64::instructions::interrupts::enable_and_hlt();
+        } else {
+            x86_64::instructions::interrupts::enable();
         }
     }
 }

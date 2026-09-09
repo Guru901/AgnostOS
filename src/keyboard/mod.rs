@@ -5,7 +5,7 @@ use pc_keyboard::{
 };
 use ringbuf::{
     StaticCons, StaticProd, StaticRb,
-    traits::{Consumer, Producer, SplitRef},
+    traits::{Consumer, Observer, Producer, SplitRef},
 };
 use spin::Mutex;
 use static_cell::StaticCell;
@@ -87,6 +87,21 @@ pub(crate) fn pop_keyboard_scancode() -> Option<KeyboardScancode> {
         (&mut *core::ptr::addr_of_mut!(KEYBOARD_CONSUMER))
             .as_mut()?
             .try_pop()
+    }
+}
+
+/// Returns whether the keyboard queue has no pending scancodes.
+///
+/// Call this with interrupts disabled when using the result to decide whether
+/// to sleep. That makes the check atomic with respect to the IRQ producer.
+pub(crate) fn keyboard_queue_is_empty() -> bool {
+    // SAFETY: initialization completes before interrupts are enabled. The
+    // shell calls this with interrupts disabled, so the IRQ producer cannot
+    // change the queue while the empty state is being observed.
+    unsafe {
+        (&*core::ptr::addr_of!(KEYBOARD_CONSUMER))
+            .as_ref()
+            .is_none_or(|consumer| consumer.is_empty())
     }
 }
 
