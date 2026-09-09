@@ -3,7 +3,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use crate::{
     color::{self, Color},
     graphics::{self, Framebuffer, PixelCoord, PixelSize},
-    idt::{PS2_COMMAND, PS2_DATA, PS2_STATUS, inb, outb},
+    interrupts::{PS2_COMMAND, PS2_DATA, PS2_STATUS, inb, outb},
 };
 use ringbuf::{
     StaticCons, StaticProd, StaticRb,

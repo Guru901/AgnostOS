@@ -6,7 +6,7 @@
 //! place to add initialization dependencies.
 
 use crate::kprintln;
-use crate::{allocator, console, graphics::Framebuffer, idt, shell, uefi_graphics};
+use crate::{allocator, console, graphics::Framebuffer, interrupts, shell, uefi_graphics};
 use uefi::Status;
 
 /// Initializes the UEFI-facing parts of the kernel and enters the shell.
@@ -40,7 +40,7 @@ pub fn initialize() -> Status {
         fatal("global allocator initialization failed", error);
     }
 
-    idt::init();
+    interrupts::init();
     shell::init()
 }
 
