@@ -18,6 +18,9 @@ mouse = []
 # Emits IRQ-level input traces to QEMU's debug console.  This is deliberately
 # opt-in so production builds do not expose a debug I/O port.
 input-smoke = []
+# Boots directly into an invalid-opcode exception so QEMU can verify the
+# exception path without exposing fault triggers in normal builds.
+fault-smoke = []
 
 [dependencies]
 noto-sans-mono-bitmap = { version = "0.3", features = ["size_16", "size_20", "size_24", "size_32", "regular"] }

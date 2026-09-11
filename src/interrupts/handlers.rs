@@ -1,4 +1,9 @@
 //! CPU exception and hardware IRQ handlers.
+//!
+//! IRQ handlers may only acknowledge their source and update explicitly
+//! interrupt-safe state.  They must not allocate, take the normal console
+//! mutex, or wait on a lock that interrupted code could hold.  Fatal exception
+//! handlers use the emergency writer for the same reason.
 
 use core::sync::atomic::Ordering;
 
@@ -12,10 +17,13 @@ use crate::mouse::{MouseByte, push_mouse_byte};
 use crate::{
     TICKS,
     keyboard::{KeyboardScancode, push_keyboard_scancode},
-    kprintln,
 };
 
-use super::{PS2_DATA, inb, pic};
+use super::{
+    PS2_DATA,
+    controller::{self, Irq},
+    inb,
+};
 
 fn halt() -> ! {
     loop {
@@ -24,12 +32,16 @@ fn halt() -> ! {
 }
 
 fn fatal_exception(name: &str, stack_frame: InterruptStackFrame) -> ! {
-    kprintln!("\nEXCEPTION: {name}\n{stack_frame:#?}");
+    #[cfg(feature = "fault-smoke")]
+    crate::fault_smoke::exception_entered();
+    crate::console::emergency_print(format_args!("EXCEPTION: {name}\n{stack_frame:#?}\n"));
     halt()
 }
 
 fn fatal_exception_with_code(name: &str, stack_frame: InterruptStackFrame, error_code: u64) -> ! {
-    kprintln!("\nEXCEPTION: {name} (error code: {error_code:#x})\n{stack_frame:#?}");
+    crate::console::emergency_print(format_args!(
+        "EXCEPTION: {name} (error code: {error_code:#x})\n{stack_frame:#?}\n"
+    ));
     halt()
 }
 
@@ -74,7 +86,7 @@ exception_handler_with_code!(vmm_communication_exception, "VMM communication exc
 exception_handler_with_code!(security_exception, "security exception");
 
 pub(super) extern "x86-interrupt" fn breakpoint(stack_frame: InterruptStackFrame) {
-    kprintln!("{stack_frame:#?}");
+    crate::console::emergency_print(format_args!("BREAKPOINT\n{stack_frame:#?}\n"));
 }
 
 pub(super) extern "x86-interrupt" fn double_fault(
@@ -90,7 +102,9 @@ pub(super) extern "x86-interrupt" fn page_fault(
     error_code: PageFaultErrorCode,
 ) {
     let address = Cr2::read_raw();
-    kprintln!("\nEXCEPTION: page fault at {address:#x} ({error_code:?})\n{stack_frame:#?}");
+    crate::console::emergency_print(format_args!(
+        "PAGE FAULT at {address:#x} ({error_code:?})\n{stack_frame:#?}\n"
+    ));
     halt()
 }
 
@@ -101,14 +115,14 @@ pub(super) extern "x86-interrupt" fn machine_check(_stack_frame: InterruptStackF
 
 pub(super) extern "x86-interrupt" fn timer(_stack_frame: InterruptStackFrame) {
     TICKS.fetch_add(1, Ordering::Relaxed);
-    pic::acknowledge_master();
+    controller::acknowledge(Irq::Timer);
 }
 
 pub(super) extern "x86-interrupt" fn keyboard(_stack_frame: InterruptStackFrame) {
     // SAFETY: IRQ1 owns the PS/2 data byte that triggered it.
     let code = unsafe { inb(PS2_DATA) };
     push_keyboard_scancode(KeyboardScancode::new(code));
-    pic::acknowledge_master();
+    controller::acknowledge(Irq::Keyboard);
 }
 
 #[cfg(feature = "mouse")]
@@ -116,5 +130,5 @@ pub(super) extern "x86-interrupt" fn mouse(_stack_frame: InterruptStackFrame) {
     // SAFETY: IRQ12 owns the PS/2 data byte that triggered it.
     let byte = unsafe { inb(PS2_DATA) };
     push_mouse_byte(MouseByte::new(byte));
-    pic::acknowledge_slave();
+    controller::acknowledge(Irq::Mouse);
 }

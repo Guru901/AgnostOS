@@ -131,7 +131,7 @@ pub fn init() -> ! {
         // Prevent an input IRQ from arriving after the queue check but before
         // `hlt`. `enable_and_hlt` executes `sti; hlt`, whose interrupt shadow
         // makes the enable-and-sleep transition atomic for maskable IRQs.
-        x86_64::instructions::interrupts::disable();
+        crate::platform::disable_interrupts();
         let input_queues_empty = keyboard::keyboard_queue_is_empty() && {
             #[cfg(feature = "mouse")]
             {
@@ -143,9 +143,9 @@ pub fn init() -> ! {
             }
         };
         if input_queues_empty {
-            x86_64::instructions::interrupts::enable_and_hlt();
+            crate::platform::enable_and_hlt();
         } else {
-            x86_64::instructions::interrupts::enable();
+            crate::platform::enable_interrupts();
         }
     }
 }

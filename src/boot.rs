@@ -6,7 +6,9 @@
 //! place to add initialization dependencies.
 
 use crate::kprintln;
-use crate::{allocator, console, graphics::Framebuffer, interrupts, shell, uefi_graphics};
+#[cfg(not(feature = "fault-smoke"))]
+use crate::shell;
+use crate::{allocator, console, graphics::Framebuffer, interrupts, uefi_graphics};
 use uefi::Status;
 
 /// Initializes the UEFI-facing parts of the kernel and enters the shell.
@@ -43,12 +45,17 @@ pub fn initialize() -> Status {
     interrupts::init();
     #[cfg(feature = "input-smoke")]
     crate::input_smoke::ready();
+    #[cfg(feature = "fault-smoke")]
+    {
+        crate::fault_smoke::trigger();
+    }
+    #[cfg(not(feature = "fault-smoke"))]
     shell::init()
 }
 
 fn fatal(message: &str, detail: impl core::fmt::Debug) -> ! {
     kprintln!("{message}: {detail:?}");
     loop {
-        x86_64::instructions::hlt();
+        crate::platform::halt();
     }
 }

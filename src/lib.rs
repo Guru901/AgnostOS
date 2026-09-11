@@ -28,6 +28,9 @@ pub mod graphics;
 /// Module that contains the code for rendering things to the screen when in uefi. It usses gop.
 pub mod uefi_graphics;
 
+#[cfg(feature = "uefi-bin")]
+mod uefi_compat;
+
 /// Module that contains the code for printing text to the screen same way println! does
 pub mod console;
 
@@ -39,6 +42,9 @@ pub mod keyboard;
 
 #[cfg(feature = "input-smoke")]
 pub(crate) mod input_smoke;
+
+#[cfg(feature = "fault-smoke")]
+pub(crate) mod fault_smoke;
 
 pub mod timer;
 
