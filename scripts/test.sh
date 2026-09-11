@@ -16,3 +16,9 @@ fi
 cd "$TEST_WORKDIR"
 cargo +nightly test --manifest-path "$PROJECT_ROOT/Cargo.toml" --features mouse
 cargo +nightly test --manifest-path "$PROJECT_ROOT/Cargo.toml" --no-default-features --features custom-allocator,mouse
+
+if command -v qemu-system-x86_64 >/dev/null 2>&1; then
+    python3 "$PROJECT_ROOT/scripts/qemu-input-smoke.py"
+else
+    echo "Skipping QEMU input smoke test: qemu-system-x86_64 is not installed."
+fi

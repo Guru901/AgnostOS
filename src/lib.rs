@@ -37,6 +37,9 @@ pub mod color;
 /// Module that contains the code for handling keyboard.
 pub mod keyboard;
 
+#[cfg(feature = "input-smoke")]
+pub(crate) mod input_smoke;
+
 pub mod timer;
 
 #[cfg(feature = "mouse")]

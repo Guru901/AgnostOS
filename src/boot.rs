@@ -41,6 +41,8 @@ pub fn initialize() -> Status {
     }
 
     interrupts::init();
+    #[cfg(feature = "input-smoke")]
+    crate::input_smoke::ready();
     shell::init()
 }
 
