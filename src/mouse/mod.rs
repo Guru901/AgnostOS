@@ -143,7 +143,7 @@ pub(crate) fn init_mouse() {
     }
 }
 
-// Call from the mouse interrupt handler.
+/// Traces and enqueues a byte received by the mouse interrupt handler.
 pub(crate) fn push_mouse_byte(code: MouseByte) {
     #[cfg(feature = "input-smoke")]
     crate::input_smoke::mouse_byte(code.0);

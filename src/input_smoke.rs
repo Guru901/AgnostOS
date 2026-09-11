@@ -11,9 +11,15 @@ use x86_64::instructions::port::Port;
 const DEBUG_PORT: u16 = 0xe9;
 static OVERFLOW_TRIGGERED: AtomicBool = AtomicBool::new(false);
 
-// The Apple-hosted UEFI target used by the smoke test currently leaves this C
-// runtime symbol unresolved in `uefi`.  Supplying it only in this opt-in test
-// build keeps the production image's link surface unchanged.
+/// Returns the length of a NUL-terminated UTF-16 string.
+///
+/// The UEFI target used by the smoke test leaves this C runtime symbol
+/// unresolved in `uefi`. Supplying it only in this opt-in test build keeps the
+/// production image's link surface unchanged.
+///
+/// # Safety
+///
+/// `string` must point to a valid NUL-terminated sequence of `u16` values.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn wcslen(mut string: *const u16) -> usize {
     let mut length = 0;
@@ -28,33 +34,39 @@ pub unsafe extern "C" fn wcslen(mut string: *const u16) -> usize {
     length
 }
 
+/// Writes one byte to QEMU's debug console port.
 fn write_byte(byte: u8) {
     // SAFETY: `scripts/qemu-input-smoke.py` creates an `isa-debugcon` device
     // at this port. This module is only compiled for that test build.
     unsafe { Port::new(DEBUG_PORT).write(byte) };
 }
 
+/// Writes a byte as two lowercase hexadecimal digits.
 fn write_hex(byte: u8) {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     write_byte(HEX[(byte >> 4) as usize]);
     write_byte(HEX[(byte & 0x0f) as usize]);
 }
 
+/// Emits one newline-terminated input-byte trace record.
 fn trace(prefix: u8, byte: u8) {
     write_byte(prefix);
     write_hex(byte);
     write_byte(b'\n');
 }
 
+/// Signals that the guest input drivers are ready for injected events.
 pub(crate) fn ready() {
     write_byte(b'R');
     write_byte(b'\n');
 }
 
+/// Emits a keyboard scan-code trace record.
 pub(crate) fn keyboard_byte(byte: u8) {
     trace(b'K', byte);
 }
 
+/// Signals that the keyboard input queue overflowed.
 pub(crate) fn keyboard_overflow() {
     write_byte(b'D');
     write_byte(b'\n');
@@ -69,6 +81,7 @@ pub(crate) fn force_keyboard_overflow(byte: u8) -> bool {
 }
 
 #[cfg(feature = "mouse")]
+/// Emits a mouse-byte trace record.
 pub(crate) fn mouse_byte(byte: u8) {
     trace(b'M', byte);
 }

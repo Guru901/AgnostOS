@@ -61,7 +61,7 @@ pub(crate) fn init_keyboard() {
     }
 }
 
-// call from wherever pushes (e.g. keyboard interrupt handler)
+/// Traces and enqueues a scan code received by the keyboard interrupt handler.
 pub(crate) fn push_keyboard_scancode(code: KeyboardScancode) {
     #[cfg(feature = "input-smoke")]
     crate::input_smoke::keyboard_byte(code.0);

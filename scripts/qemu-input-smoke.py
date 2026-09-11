@@ -22,11 +22,15 @@ OVMF = ROOT / "bios" / "OVMF.4m.fd"
 
 
 def fail(message):
+    """Abort the smoke test with a descriptive runtime error."""
     raise RuntimeError(message)
 
 
 class Qmp:
+    """Minimal client for the QEMU Machine Protocol socket."""
+
     def __init__(self, path):
+        """Connect to QMP at ``path`` and negotiate protocol capabilities."""
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         deadline = time.monotonic() + 10
         while True:
@@ -42,12 +46,14 @@ class Qmp:
         self.command("qmp_capabilities")
 
     def _read(self):
+        """Read and decode one JSON message from QMP."""
         line = self.file.readline()
         if not line:
             fail("QMP connection closed unexpectedly")
         return json.loads(line)
 
     def command(self, name, arguments=None):
+        """Send a QMP command and return its successful response payload."""
         request = {"execute": name}
         if arguments is not None:
             request["arguments"] = arguments
@@ -61,22 +67,27 @@ class Qmp:
                 fail(f"QMP {name} failed: {response['error']}")
 
     def events(self, events):
+        """Inject a sequence of QMP input events into the guest."""
         self.command("input-send-event", {"events": events})
 
     def close(self):
+        """Close the QMP stream and its underlying socket."""
         self.file.close()
         self.sock.close()
 
 
 def key(name, down):
+    """Build a QMP key event for the named QEMU key code."""
     return {"type": "key", "data": {"down": down, "key": {"type": "qcode", "data": name}}}
 
 
 def key_press(qmp, name):
+    """Inject a complete press-and-release cycle for a key."""
     qmp.events([key(name, True), key(name, False)])
 
 
 def wait_for(log, predicate, description, timeout=10):
+    """Poll a trace log until its contents satisfy ``predicate``."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         data = log.read_text(errors="replace") if log.exists() else ""
@@ -87,6 +98,7 @@ def wait_for(log, predicate, description, timeout=10):
 
 
 def assert_subsequence(records, expected, name):
+    """Require all expected records to occur in order in the trace."""
     position = 0
     for record in records:
         if position < len(expected) and record == expected[position]:
@@ -96,6 +108,7 @@ def assert_subsequence(records, expected, name):
 
 
 def main():
+    """Build, boot, and exercise the QEMU input smoke-test guest."""
     if not QEMU:
         fail("qemu-system-x86_64 is required for the QEMU input smoke test")
     if not OVMF.is_file():
