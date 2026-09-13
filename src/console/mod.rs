@@ -306,6 +306,9 @@ pub(crate) fn reset() {
 /// Handles wrapping back to the previous line if the cursor is at x=0.
 pub(crate) fn backspace(line: &mut String) {
     if let Some(writer) = KWRITER.lock().as_mut() {
+        // Keep the visual cursor and the shell-owned line synchronized even
+        // if a new prompt was printed without an explicit cursor reset.
+        writer.input_cursor = writer.input_cursor.min(line.chars().count());
         if writer.input_cursor == 0 {
             return;
         }
@@ -317,9 +320,17 @@ pub(crate) fn backspace(line: &mut String) {
 
 pub(crate) fn insert_char(line: &mut String, ch: char) {
     if let Some(writer) = KWRITER.lock().as_mut() {
+        writer.input_cursor = writer.input_cursor.min(line.chars().count());
         insert_char_at(line, writer.input_cursor, ch);
         writer.input_cursor += 1;
         redraw_input_line(writer, line, writer.input_cursor);
+    }
+}
+
+/// Starts editing a freshly printed shell prompt.
+pub(crate) fn reset_input_cursor() {
+    if let Some(writer) = KWRITER.lock().as_mut() {
+        writer.input_cursor = 0;
     }
 }
 
@@ -349,9 +360,10 @@ pub(crate) fn auto_complete(line: &mut String) {
         return;
     };
 
-    let suffix = &command[line.len()..];
-    kprint!("{suffix}");
-    line.push_str(suffix);
+    let suffix = command[line.len()..].to_string();
+    for ch in suffix.chars() {
+        insert_char(line, ch);
+    }
 }
 
 /// Erases the block cursor at the current cursor position by painting
@@ -578,6 +590,10 @@ fn insert_char_at(line: &mut String, cursor: usize, ch: char) {
 }
 
 fn remove_char_at(line: &mut String, cursor: usize) {
+    let cursor = cursor.min(line.chars().count());
+    if cursor == 0 {
+        return;
+    }
     let start = line.char_indices().nth(cursor - 1).map_or(0, |(i, _)| i);
     let end = line
         .char_indices()
@@ -642,6 +658,11 @@ mod tests {
         assert_eq!(line, "ab😀d");
         remove_char_at(&mut line, 3);
         assert_eq!(line, "abd");
+
+        // A stale cursor must behave like a normal backspace at the end of
+        // the line, rather than turning the whole line into an empty string.
+        remove_char_at(&mut line, usize::MAX);
+        assert_eq!(line, "ab");
     }
 
     #[test]

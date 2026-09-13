@@ -7,7 +7,7 @@
 use spin::Once;
 use x86_64::{
     VirtAddr,
-    instructions::segmentation::{CS, Segment},
+    instructions::segmentation::{CS, DS, ES, FS, GS, SS, Segment},
     structures::{
         gdt::{Descriptor, GlobalDescriptorTable, SegmentSelector},
         tss::TaskStateSegment,
@@ -33,6 +33,7 @@ static mut INTERRUPT_STACKS: [InterruptStack; 3] = [
 
 struct Selectors {
     code: SegmentSelector,
+    data: SegmentSelector,
     tss: SegmentSelector,
 }
 
@@ -70,8 +71,9 @@ pub(super) fn install() {
     let gdt = GDT.call_once(|| {
         let mut gdt = GlobalDescriptorTable::new();
         let code = gdt.append(Descriptor::kernel_code_segment());
+        let data = gdt.append(Descriptor::kernel_data_segment());
         let tss = gdt.append(Descriptor::tss_segment(tss));
-        (gdt, Selectors { code, tss })
+        (gdt, Selectors { code, data, tss })
     });
 
     gdt.0.load();
@@ -79,6 +81,14 @@ pub(super) fn install() {
     // entries owned by it.  The TSS and its IST stacks are static.
     unsafe {
         CS::set_reg(gdt.1.code);
+        // UEFI leaves its own data/stack selectors loaded.  Loading our GDT
+        // does not change those registers, so replace all of them before an
+        // interrupt can return through the old (now invalid) SS selector.
+        DS::set_reg(gdt.1.data);
+        ES::set_reg(gdt.1.data);
+        FS::set_reg(gdt.1.data);
+        GS::set_reg(gdt.1.data);
+        SS::set_reg(gdt.1.data);
         x86_64::instructions::tables::load_tss(gdt.1.tss);
     }
 }

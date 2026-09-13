@@ -98,6 +98,7 @@ pub fn init() -> ! {
                         run_command(&line);
                         line.clear();
                         kprint!("{PROMPT}");
+                        console::reset_input_cursor();
                     }
                     '\u{8}' => {
                         // backspace — remove last char from buffer and erase from screen
@@ -111,6 +112,7 @@ pub fn init() -> ! {
                     kprintln!("^C");
                     line.clear();
                     kprint!("{PROMPT}");
+                    console::reset_input_cursor();
                 }
                 KeyboardEvent::ZoomIn => console::zoom_in(&line),
                 KeyboardEvent::ZoomOut => console::zoom_out(&line),
