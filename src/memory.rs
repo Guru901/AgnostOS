@@ -6,7 +6,7 @@
 
 use core::fmt;
 
-use spin::Once;
+use spin::{Mutex, Once};
 use uefi::mem::memory_map::{MemoryMap, MemoryType};
 
 pub const MAX_MEMORY_RANGES: usize = 256;
@@ -161,15 +161,121 @@ impl MemoryMapSnapshot {
         Ok(snapshot)
     }
 
-    fn mark_range(&mut self, start: u64, length: u64, kind: MemoryKind) {
+    fn reserve_range(
+        &mut self,
+        start: u64,
+        length: u64,
+        kind: MemoryKind,
+    ) -> Result<(), MemoryMapError> {
         let Some(end) = start.checked_add(length) else {
-            return;
+            return Err(MemoryMapError::InvalidRange);
         };
-        for range in &mut self.ranges[..self.count] {
-            if start < range.end() && range.start < end {
-                range.kind = kind;
-            }
+        if length == 0 || end <= start {
+            return Err(MemoryMapError::InvalidRange);
         }
+
+        let empty = MemoryRange {
+            start: 0,
+            length: 0,
+            uefi_type: MemoryType::RESERVED,
+            kind: MemoryKind::Reserved,
+        };
+        let old_ranges = self.ranges;
+        let old_count = self.count;
+        let mut replacement = [empty; MAX_MEMORY_RANGES];
+        let mut replacement_count = 0;
+        let mut overlapped = false;
+
+        for range in old_ranges.into_iter().take(old_count) {
+            let overlap_start = start.max(range.start);
+            let overlap_end = end.min(range.end());
+            if overlap_start >= overlap_end {
+                if replacement_count == MAX_MEMORY_RANGES {
+                    return Err(MemoryMapError::TooManyRanges);
+                }
+                replacement[replacement_count] = range;
+                replacement_count += 1;
+                continue;
+            }
+            overlapped = true;
+
+            let push = |replacement: &mut [MemoryRange; MAX_MEMORY_RANGES],
+                        count: &mut usize,
+                        value: MemoryRange|
+             -> Result<(), MemoryMapError> {
+                if value.length == 0 || *count == MAX_MEMORY_RANGES {
+                    return if value.length == 0 {
+                        Ok(())
+                    } else {
+                        Err(MemoryMapError::TooManyRanges)
+                    };
+                }
+                replacement[*count] = value;
+                *count += 1;
+                Ok(())
+            };
+
+            push(
+                &mut replacement,
+                &mut replacement_count,
+                MemoryRange {
+                    start: range.start,
+                    length: overlap_start - range.start,
+                    uefi_type: range.uefi_type,
+                    kind: range.kind,
+                },
+            )?;
+            push(
+                &mut replacement,
+                &mut replacement_count,
+                MemoryRange {
+                    start: overlap_start,
+                    length: overlap_end - overlap_start,
+                    uefi_type: range.uefi_type,
+                    kind,
+                },
+            )?;
+            push(
+                &mut replacement,
+                &mut replacement_count,
+                MemoryRange {
+                    start: overlap_end,
+                    length: range.end() - overlap_end,
+                    uefi_type: range.uefi_type,
+                    kind: range.kind,
+                },
+            )?;
+        }
+
+        if !overlapped {
+            return Err(MemoryMapError::RangeNotFound);
+        }
+        self.ranges = replacement;
+        self.count = replacement_count;
+        Ok(())
+    }
+
+    fn add_external_range(
+        &mut self,
+        start: u64,
+        length: u64,
+        kind: MemoryKind,
+    ) -> Result<(), MemoryMapError> {
+        let Some(end) = start.checked_add(length) else {
+            return Err(MemoryMapError::InvalidRange);
+        };
+        if length == 0 || end <= start || self.count == MAX_MEMORY_RANGES {
+            return Err(MemoryMapError::InvalidRange);
+        }
+        let range = MemoryRange {
+            start,
+            length,
+            uefi_type: MemoryType::MMIO,
+            kind,
+        };
+        self.ranges[self.count] = range;
+        self.count += 1;
+        Ok(())
     }
 }
 
@@ -178,33 +284,47 @@ pub enum MemoryMapError {
     AlreadyInitialized,
     Empty,
     InvalidRange,
+    RangeNotFound,
     TooManyRanges,
+    NotInitialized,
 }
 
-static MEMORY_MAP: Once<MemoryMapSnapshot> = Once::new();
+static MEMORY_MAP: Once<Mutex<MemoryMapSnapshot>> = Once::new();
 
 /// Copies the firmware map into storage owned by the kernel.
 pub fn initialize<M: MemoryMap>(
     map: &M,
-    heap_start: usize,
-    heap_size: usize,
     framebuffer: Option<(usize, usize)>,
 ) -> Result<(), MemoryMapError> {
     if MEMORY_MAP.get().is_some() {
         return Err(MemoryMapError::AlreadyInitialized);
     }
     let mut snapshot = MemoryMapSnapshot::copy_from(map)?;
-    snapshot.mark_range(heap_start as u64, heap_size as u64, MemoryKind::Kernel);
     if let Some((start, length)) = framebuffer {
-        snapshot.mark_range(start as u64, length as u64, MemoryKind::Device);
+        match snapshot.reserve_range(start as u64, length as u64, MemoryKind::Device) {
+            Ok(()) => {}
+            Err(MemoryMapError::RangeNotFound) => {
+                snapshot.add_external_range(start as u64, length as u64, MemoryKind::Device)?
+            }
+            Err(error) => return Err(error),
+        }
     }
-    MEMORY_MAP.call_once(|| snapshot);
+    MEMORY_MAP.call_once(|| Mutex::new(snapshot));
     Ok(())
 }
 
+/// Reserves a physical range in the owned map without losing the free ranges
+/// around it. This is used for heap backing and later for stacks/page tables.
+pub fn reserve(start: usize, length: usize, kind: MemoryKind) -> Result<(), MemoryMapError> {
+    let Some(map) = MEMORY_MAP.get() else {
+        return Err(MemoryMapError::NotInitialized);
+    };
+    map.lock().reserve_range(start as u64, length as u64, kind)
+}
+
 #[must_use]
-pub fn snapshot() -> Option<&'static MemoryMapSnapshot> {
-    MEMORY_MAP.get()
+pub fn snapshot() -> Option<MemoryMapSnapshot> {
+    MEMORY_MAP.get().map(|map| *map.lock())
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -281,5 +401,32 @@ mod tests {
             kind: MemoryKind::Reserved,
         };
         assert_eq!(range.end(), u64::MAX);
+    }
+
+    #[test]
+    fn reservation_splits_a_usable_range_without_losing_neighbors() {
+        let empty = MemoryRange {
+            start: 0,
+            length: 0,
+            uefi_type: MemoryType::RESERVED,
+            kind: MemoryKind::Reserved,
+        };
+        let mut snapshot = MemoryMapSnapshot {
+            ranges: [empty; MAX_MEMORY_RANGES],
+            count: 1,
+        };
+        snapshot.ranges[0] = MemoryRange::for_test(0x1000, 0x9000, MemoryType::CONVENTIONAL);
+
+        snapshot
+            .reserve_range(0x3000, 0x2000, MemoryKind::Kernel)
+            .unwrap();
+
+        assert_eq!(snapshot.len(), 3);
+        assert_eq!(snapshot.ranges()[0].length(), 0x2000);
+        assert_eq!(snapshot.ranges()[1].start(), 0x3000);
+        assert_eq!(snapshot.ranges()[1].length(), 0x2000);
+        assert_eq!(snapshot.ranges()[1].kind(), MemoryKind::Kernel);
+        assert_eq!(snapshot.ranges()[2].start(), 0x5000);
+        assert_eq!(snapshot.ranges()[2].length(), 0x5000);
     }
 }

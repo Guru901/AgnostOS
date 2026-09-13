@@ -20,9 +20,9 @@ kernel, ACPI, runtime, and device ranges, and marks the heap and framebuffer.
 ## 3. Build a physical-frame allocator
 
 Implemented on this branch: a fixed-storage allocator can allocate and free
-4 KiB frames and excludes all non-usable ownership classes. The remaining part
-is to put the heap allocator on top of it rather than treating one conventional
-region as permanently owned.
+4 KiB frames, and the heap now obtains its contiguous backing range from it.
+The remaining reservation work is to allocate page-table and kernel-stack
+frames through the same ownership API.
 
 ## 4. Introduce page tables and a virtual-memory layout
 

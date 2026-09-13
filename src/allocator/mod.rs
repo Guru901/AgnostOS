@@ -3,10 +3,9 @@ use core::alloc::{GlobalAlloc, Layout};
 use core::sync::atomic::Ordering;
 use uefi::boot;
 use uefi::boot::MemoryType;
-use uefi::mem::memory_map::MemoryMap;
 
-use crate::memory;
 use crate::{BOOT_SERVICES_EXITED, HEAP_SIZE, HEAP_START};
+use crate::{frame, memory};
 
 #[cfg(all(feature = "uefi-bin", feature = "custom-allocator"))]
 #[global_allocator]
@@ -34,6 +33,8 @@ pub enum HeapError {
     TooSmall,
     Misaligned,
     MemoryMapUnavailable,
+    FrameAllocatorUnavailable,
+    MemoryReservationFailed,
 }
 
 /// Exits UEFI boot services and returns the largest conventional-memory region
@@ -54,33 +55,26 @@ pub fn initialize_heap(framebuffer: Option<(usize, usize)>) -> Result<HeapRegion
     let memory_map = unsafe { boot::exit_boot_services(Some(MemoryType::LOADER_DATA)) };
     BOOT_SERVICES_EXITED.store(true, Ordering::Release);
 
-    // Find the largest contiguous conventional (free) memory region.
-    let mut heap_start = 0usize;
-    let mut heap_size = 0usize;
-    for descriptor in memory_map.entries() {
-        if descriptor.ty == MemoryType::CONVENTIONAL {
-            let Ok(page_count) = usize::try_from(descriptor.page_count) else {
-                continue;
-            };
-            let Some(size) = page_count.checked_mul(4096) else {
-                continue;
-            };
-            let Ok(start) = usize::try_from(descriptor.phys_start) else {
-                continue;
-            };
-            if size > heap_size {
-                heap_start = start;
-                heap_size = size;
-            }
-        }
-    }
+    memory::initialize(&memory_map, framebuffer).map_err(|_| HeapError::MemoryMapUnavailable)?;
 
-    if heap_size == 0 {
+    // The heap is now backed by frames removed from the frame allocator. This
+    // keeps all physical ownership decisions in one subsystem instead of
+    // handing the allocator an arbitrary firmware range directly.
+    frame::initialize().map_err(|_| HeapError::FrameAllocatorUnavailable)?;
+    let heap_frames =
+        frame::largest_free_frames().map_err(|_| HeapError::FrameAllocatorUnavailable)?;
+    if heap_frames == 0 {
         return Err(HeapError::NoConventionalMemory);
     }
+    let heap_range = frame::allocate_contiguous(heap_frames)
+        .map_err(|_| HeapError::FrameAllocatorUnavailable)?;
+    let heap_start =
+        usize::try_from(heap_range.start()).map_err(|_| HeapError::FrameAllocatorUnavailable)?;
+    let heap_size =
+        usize::try_from(heap_range.length()).map_err(|_| HeapError::FrameAllocatorUnavailable)?;
 
-    memory::initialize(&memory_map, heap_start, heap_size, framebuffer)
-        .map_err(|_| HeapError::MemoryMapUnavailable)?;
+    memory::reserve(heap_start, heap_size, memory::MemoryKind::Kernel)
+        .map_err(|_| HeapError::MemoryReservationFailed)?;
 
     // Store heap info globally so commands like `meminfo` can read them.
     HEAP_START.store(heap_start, Ordering::Relaxed);

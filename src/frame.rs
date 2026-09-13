@@ -31,6 +31,24 @@ impl FrameAddress {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PhysicalRange {
+    start: u64,
+    length: u64,
+}
+
+impl PhysicalRange {
+    #[must_use]
+    pub const fn start(self) -> u64 {
+        self.start
+    }
+
+    #[must_use]
+    pub const fn length(self) -> u64 {
+        self.length
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct FreeRange {
     start: u64,
     frames: u64,
@@ -111,6 +129,41 @@ impl FrameAllocator {
         }
         self.free_frames -= 1;
         Ok(FrameAddress(address))
+    }
+
+    fn allocate_contiguous(&mut self, frames: u64) -> Result<PhysicalRange, FrameError> {
+        if frames == 0 {
+            return Err(FrameError::OutOfMemory);
+        }
+        let index = (0..self.range_count)
+            .filter(|&index| self.ranges[index].frames >= frames)
+            .max_by_key(|&index| self.ranges[index].frames)
+            .ok_or(FrameError::OutOfMemory)?;
+        let range = &mut self.ranges[index];
+        let result = PhysicalRange {
+            start: range.start,
+            length: frames
+                .checked_mul(PAGE_SIZE)
+                .ok_or(FrameError::OutOfMemory)?,
+        };
+        range.start = range
+            .start
+            .checked_add(result.length)
+            .ok_or(FrameError::OutOfMemory)?;
+        range.frames -= frames;
+        if range.frames == 0 {
+            self.remove_range(index);
+        }
+        self.free_frames -= frames;
+        Ok(result)
+    }
+
+    fn largest_free_frames(&self) -> u64 {
+        self.ranges[..self.range_count]
+            .iter()
+            .map(|range| range.frames)
+            .max()
+            .unwrap_or(0)
     }
 
     fn release(&mut self, frame: FrameAddress) -> Result<(), FrameError> {
@@ -199,6 +252,22 @@ pub fn allocate() -> Result<FrameAddress, FrameError> {
     allocator.lock().allocate()
 }
 
+/// Allocates one contiguous physical range from the largest available range.
+pub fn allocate_contiguous(frames: u64) -> Result<PhysicalRange, FrameError> {
+    let Some(allocator) = FRAME_ALLOCATOR.get() else {
+        return Err(FrameError::MemoryMapUnavailable);
+    };
+    allocator.lock().allocate_contiguous(frames)
+}
+
+/// Returns the size of the largest currently contiguous free range in frames.
+pub fn largest_free_frames() -> Result<u64, FrameError> {
+    let Some(allocator) = FRAME_ALLOCATOR.get() else {
+        return Err(FrameError::MemoryMapUnavailable);
+    };
+    Ok(allocator.lock().largest_free_frames())
+}
+
 /// Returns a frame to the allocator.
 pub fn release(frame: FrameAddress) -> Result<(), FrameError> {
     let Some(allocator) = FRAME_ALLOCATOR.get() else {
@@ -252,5 +321,14 @@ mod tests {
         let mut allocator = FrameAllocator::new(&[reserved, usable(0x2000, 1)]);
         assert_eq!(allocator.stats().total_frames, 1);
         assert_eq!(allocator.allocate().unwrap().address(), 0x2000);
+    }
+
+    #[test]
+    fn allocates_a_contiguous_range_from_the_largest_region() {
+        let mut allocator = FrameAllocator::new(&[usable(0x1000, 2), usable(0x10_000, 4)]);
+        let range = allocator.allocate_contiguous(3).unwrap();
+        assert_eq!(range.start, 0x10_000);
+        assert_eq!(range.length, 3 * PAGE_SIZE);
+        assert_eq!(allocator.stats().free_frames, 3);
     }
 }
