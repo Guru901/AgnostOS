@@ -48,6 +48,8 @@ pub fn init() -> ! {
 
     kprint!("{PROMPT}");
     console::draw_cursor();
+    #[cfg(feature = "mouse")]
+    crate::interrupts::enable_mouse();
 
     loop {
         #[cfg(feature = "mouse")]

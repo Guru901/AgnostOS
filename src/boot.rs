@@ -49,6 +49,7 @@ pub fn initialize() -> Status {
     interrupts::init();
     #[cfg(feature = "input-smoke")]
     crate::input_smoke::ready();
+    interrupts::enable_runtime();
     #[cfg(feature = "fault-smoke")]
     {
         crate::fault_smoke::trigger();

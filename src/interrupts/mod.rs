@@ -47,8 +47,39 @@ pub fn init() {
         crate::keyboard::init_keyboard();
         #[cfg(feature = "mouse")]
         crate::mouse::init_mouse();
+
+        // Discard controller responses left over from firmware/device setup
+        // before enabling the keyboard IRQ. Otherwise QEMU can deliver a
+        // stale 0xfa acknowledgement as the first keyboard byte.
+        unsafe { drain_ps2_output() };
     });
     x86_64::instructions::interrupts::enable();
+}
+
+/// Drains stale bytes from the shared PS/2 output buffer during boot.
+///
+/// # Safety
+///
+/// Interrupts are disabled and the controller is not being accessed by a
+/// concurrent device handler.
+unsafe fn drain_ps2_output() {
+    for _ in 0..32 {
+        if unsafe { inb(PS2_STATUS) } & 0b01 == 0 {
+            break;
+        }
+        unsafe { inb(PS2_DATA) };
+    }
+}
+
+/// Enables runtime device IRQs after the post-UEFI input path is ready.
+pub fn enable_runtime() {
+    controller::enable_runtime();
+}
+
+/// Enables the mouse IRQ after the shell and its input queues are ready.
+#[cfg(feature = "mouse")]
+pub fn enable_mouse() {
+    controller::enable_mouse();
 }
 
 /// Host builds never execute kernel code and therefore have no IDT to install.

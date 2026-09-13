@@ -136,6 +136,9 @@ def main():
         try:
             qmp = Qmp(qmp_path)
             wait_for(trace, lambda text: "R\n" in text, "the guest input driver")
+            # Allow the guest to finish enabling IRQ1 and enter its shell loop
+            # before the first QMP event is injected.
+            time.sleep(0.25)
 
             # A normal key, Shift modifier, Ctrl modifier, and extended arrow
             # keys. Exact set-1 bytes verify their order at the IRQ boundary.
