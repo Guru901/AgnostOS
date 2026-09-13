@@ -37,14 +37,16 @@ The kernel now copies the map into a fixed static table before initializing the
 heap. It classifies UEFI ranges, records the framebuffer as device memory, and
 splits descriptors when reserving ranges. A fixed-storage frame allocator now
 allocates and releases frames only from ranges still classified as usable, and
-the heap obtains its contiguous backing range from that allocator. Exact
-kernel/page-table/stack reservations remain before paging work can begin.
+the heap obtains its contiguous backing range from that allocator. The paging
+foundation defines canonical higher-half regions and allocates/initializes an
+owned level-4 page-table frame, while CR3 installation and runtime mappings
+remain future work.
 
 ### 2. Add physical and virtual memory management
 
 - [x] Implement a fixed-storage 4 KiB physical-frame allocator with allocation
   and release.
-- [ ] Define the x86_64 virtual-address layout and its ownership rules.
+- [x] Define the x86_64 virtual-address layout and its ownership rules.
 - [ ] Create page-table mapping/unmapping primitives with checked alignment and
   permission flags.
 - [ ] Deliberately map the kernel, heap, framebuffer, device memory, stacks,
