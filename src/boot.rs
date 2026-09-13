@@ -10,12 +10,24 @@ use crate::kprintln;
 use crate::shell;
 use crate::{allocator, console, graphics::Framebuffer, interrupts, paging, uefi_graphics};
 use uefi::Status;
+use uefi::{boot, proto::loaded_image::LoadedImage};
 
 /// Initializes the UEFI-facing parts of the kernel and enters the shell.
 pub fn initialize() -> Status {
     if let Err(error) = uefi::helpers::init() {
         return error.status();
     }
+
+    let loaded_image = match boot::open_protocol_exclusive::<LoadedImage>(boot::image_handle()) {
+        Ok(image) => image,
+        Err(error) => return error.status(),
+    };
+    let (image_base, image_size) = loaded_image.info();
+    let Some(image_size) = usize::try_from(image_size).ok() else {
+        return Status::BAD_BUFFER_SIZE;
+    };
+    let kernel_image = (image_base as usize, image_size);
+    drop(loaded_image);
 
     let mut gop = match uefi_graphics::init_gop() {
         Ok(gop) => gop,
@@ -33,16 +45,17 @@ pub fn initialize() -> Status {
     console::init(framebuffer);
     uefi::println!("Exiting boot services in 1 seconds...");
 
-    let heap_region = match allocator::initialize_heap(Some(framebuffer.physical_range())) {
-        Ok(region) => region,
-        Err(error) => fatal("heap initialization failed", error),
-    };
+    let heap_region =
+        match allocator::initialize_heap(Some(framebuffer.physical_range()), kernel_image) {
+            Ok(region) => region,
+            Err(error) => fatal("heap initialization failed", error),
+        };
 
     if let Err(error) = allocator::initialize_global(heap_region) {
         fatal("global allocator initialization failed", error);
     }
 
-    if let Err(error) = paging::initialize() {
+    if let Err(error) = paging::initialize(framebuffer.physical_range(), kernel_image) {
         fatal("page-table initialization failed", error);
     }
 
