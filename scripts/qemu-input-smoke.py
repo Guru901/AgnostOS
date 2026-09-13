@@ -144,7 +144,7 @@ def main():
             qmp.events([key("ctrl", True), key("c", True), key("c", False), key("ctrl", False)])
             for arrow in ("up", "down", "left", "right"):
                 key_press(qmp, arrow)
-            trace_text = wait_for(trace, lambda text: text.count("K") >= 22, "keyboard input")
+            trace_text = wait_for(trace, lambda text: text.count("K") >= 26, "keyboard input")
             records = [line for line in trace_text.splitlines() if line.startswith("K")]
             assert_subsequence(
                 records,
