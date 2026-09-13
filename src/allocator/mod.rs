@@ -66,7 +66,7 @@ pub fn initialize_heap(framebuffer: Option<(usize, usize)>) -> Result<HeapRegion
     if heap_frames == 0 {
         return Err(HeapError::NoConventionalMemory);
     }
-    let heap_range = frame::allocate_contiguous(heap_frames)
+    let heap_range = frame::allocate_contiguous_owned(heap_frames, frame::FrameOwner::Heap)
         .map_err(|_| HeapError::FrameAllocatorUnavailable)?;
     let heap_start =
         usize::try_from(heap_range.start()).map_err(|_| HeapError::FrameAllocatorUnavailable)?;
