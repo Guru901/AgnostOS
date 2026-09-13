@@ -8,7 +8,7 @@
 use crate::kprintln;
 #[cfg(not(feature = "fault-smoke"))]
 use crate::shell;
-use crate::{allocator, console, graphics::Framebuffer, interrupts, uefi_graphics};
+use crate::{allocator, console, frame, graphics::Framebuffer, interrupts, uefi_graphics};
 use uefi::Status;
 
 /// Initializes the UEFI-facing parts of the kernel and enters the shell.
@@ -40,6 +40,10 @@ pub fn initialize() -> Status {
 
     if let Err(error) = allocator::initialize_global(heap_region) {
         fatal("global allocator initialization failed", error);
+    }
+
+    if let Err(error) = frame::initialize() {
+        fatal("physical frame allocator initialization failed", error);
     }
 
     interrupts::init();

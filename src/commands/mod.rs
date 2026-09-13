@@ -2,7 +2,7 @@ mod help;
 mod parser;
 mod shutdown;
 
-use crate::{HEAP_SIZE, HEAP_START, commands::help::help, console, kprintln, memory, timer};
+use crate::{HEAP_SIZE, HEAP_START, commands::help::help, console, frame, kprintln, memory, timer};
 use core::sync::atomic::Ordering;
 use noto_sans_mono_bitmap::RasterHeight;
 use parser::{Command, parse};
@@ -52,6 +52,11 @@ pub(crate) fn run_command(command: &str) {
                     "unusable:       {}mb",
                     summary.unusable_bytes / (1024 * 1024)
                 );
+                if let Some(frames) = frame::stats() {
+                    kprintln!("frames total:   {}", frames.total_frames);
+                    kprintln!("frames free:    {}", frames.free_frames);
+                    kprintln!("frame ranges:   {}", frames.free_ranges);
+                }
             }
         }
         Command::Font => match args.first().copied().unwrap_or("") {
