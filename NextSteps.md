@@ -13,9 +13,9 @@ PIT ticks or whether a coarse monotonic tick counter is sufficient.
 
 ## 2. Preserve and model the UEFI memory map
 
-Keep a validated copy of the memory map after exiting boot services. Use it to
-describe which physical ranges are free, reserved, firmware-owned, or occupied
-by the kernel and framebuffer.
+Implemented: the kernel now keeps a validated, kernel-owned copy of the memory
+map after exiting boot services. It describes usable, reserved, firmware,
+kernel, ACPI, runtime, and device ranges, and marks the heap and framebuffer.
 
 ## 3. Build a physical-frame allocator
 

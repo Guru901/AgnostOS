@@ -5,6 +5,7 @@ use uefi::boot;
 use uefi::boot::MemoryType;
 use uefi::mem::memory_map::MemoryMap;
 
+use crate::memory;
 use crate::{BOOT_SERVICES_EXITED, HEAP_SIZE, HEAP_START};
 
 #[cfg(all(feature = "uefi-bin", feature = "custom-allocator"))]
@@ -32,6 +33,7 @@ pub enum HeapError {
     NoConventionalMemory,
     TooSmall,
     Misaligned,
+    MemoryMapUnavailable,
 }
 
 /// Exits UEFI boot services and returns the largest conventional-memory region
@@ -41,7 +43,7 @@ pub enum HeapError {
 /// This may only be called once, after all UEFI boot services have been used.
 /// The returned region is available for exclusive use by the allocator.
 ///
-pub fn initialize_heap() -> Result<HeapRegion, HeapError> {
+pub fn initialize_heap(framebuffer: Option<(usize, usize)>) -> Result<HeapRegion, HeapError> {
     if HEAP_SIZE.load(Ordering::Relaxed) != 0 {
         return Err(HeapError::AlreadyInitialized);
     }
@@ -76,6 +78,9 @@ pub fn initialize_heap() -> Result<HeapRegion, HeapError> {
     if heap_size == 0 {
         return Err(HeapError::NoConventionalMemory);
     }
+
+    memory::initialize(&memory_map, heap_start, heap_size, framebuffer)
+        .map_err(|_| HeapError::MemoryMapUnavailable)?;
 
     // Store heap info globally so commands like `meminfo` can read them.
     HEAP_START.store(heap_start, Ordering::Relaxed);

@@ -26,16 +26,19 @@ building substantial storage or user-program support.
 
 ### 1. Preserve the memory map
 
-- [ ] Copy or transform the memory map returned by `exit_boot_services` into
+- [x] Copy or transform the memory map returned by `exit_boot_services` into
   kernel-owned data before discarding it.
-- [ ] Classify usable, reserved, firmware, kernel, framebuffer, and ACPI
+- [x] Classify usable, reserved, firmware, kernel, framebuffer, and ACPI
   ranges.
 - [ ] Reserve the kernel image, boot data, page tables, stacks, and devices.
 - [ ] Expose memory-map diagnostics from a safe kernel API.
 
-The current allocator selects the largest conventional region and turns it
-into a heap. That is useful for the prototype, but it loses ownership
-information needed by paging, DMA, drivers, and future processes.
+The kernel now copies the map into a fixed static table before initializing the
+heap. It classifies UEFI ranges and marks the selected heap as kernel-owned and
+the GOP framebuffer as device memory. The current allocator still selects the
+largest conventional region and turns it into a heap; a physical-frame
+allocator must replace that policy before the remaining reservation work can be
+completed.
 
 ### 2. Add physical and virtual memory management
 

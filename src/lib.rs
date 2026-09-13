@@ -5,6 +5,9 @@ extern crate alloc;
 /// Module that contains the code for our custom allocator.
 pub mod allocator;
 
+/// Kernel-owned physical memory map and ownership classifications.
+pub mod memory;
+
 /// Ordered kernel startup sequence and UEFI hand-off.
 pub mod boot;
 

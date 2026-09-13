@@ -2,7 +2,7 @@ mod help;
 mod parser;
 mod shutdown;
 
-use crate::{HEAP_SIZE, HEAP_START, commands::help::help, console, kprintln, timer};
+use crate::{HEAP_SIZE, HEAP_START, commands::help::help, console, kprintln, memory, timer};
 use core::sync::atomic::Ordering;
 use noto_sans_mono_bitmap::RasterHeight;
 use parser::{Command, parse};
@@ -29,6 +29,30 @@ pub(crate) fn run_command(command: &str) {
             let size = HEAP_SIZE.load(Ordering::Relaxed);
             kprintln!("heap start: {:#x}", start);
             kprintln!("heap size:  {}mb", size / (1024 * 1024));
+            if let Some(snapshot) = memory::snapshot() {
+                let summary = snapshot.summary();
+                kprintln!("memory ranges: {}", summary.ranges);
+                kprintln!("usable:        {}mb", summary.usable_bytes / (1024 * 1024));
+                kprintln!("kernel-owned:  {}mb", summary.kernel_bytes / (1024 * 1024));
+                kprintln!(
+                    "firmware:      {}mb",
+                    summary.firmware_bytes / (1024 * 1024)
+                );
+                kprintln!("acpi:           {}mb", summary.acpi_bytes / (1024 * 1024));
+                kprintln!("device/mmio:    {}mb", summary.device_bytes / (1024 * 1024));
+                kprintln!(
+                    "runtime:        {}mb",
+                    summary.runtime_bytes / (1024 * 1024)
+                );
+                kprintln!(
+                    "reserved:       {}mb",
+                    summary.reserved_bytes / (1024 * 1024)
+                );
+                kprintln!(
+                    "unusable:       {}mb",
+                    summary.unusable_bytes / (1024 * 1024)
+                );
+            }
         }
         Command::Font => match args.first().copied().unwrap_or("") {
             "16" => console::set_font_size(RasterHeight::Size16),
