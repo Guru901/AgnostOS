@@ -5,11 +5,13 @@
 //! in their own modules so device drivers only depend on the small port-I/O
 //! interface exposed here.
 
+mod controller;
+#[cfg(target_arch = "x86_64")]
+mod gdt;
 #[cfg(target_arch = "x86_64")]
 mod handlers;
 #[cfg(target_arch = "x86_64")]
 mod idt;
-#[cfg(target_arch = "x86_64")]
 mod pic;
 #[cfg(target_arch = "x86_64")]
 mod pit;
@@ -27,12 +29,13 @@ static HARDWARE_INITIALIZED: Once<()> = Once::new();
 #[cfg(target_arch = "x86_64")]
 pub fn init() {
     crate::platform::without_interrupts(|| {
+        gdt::install();
         idt::install();
         HARDWARE_INITIALIZED.call_once(|| {
             // SAFETY: `without_interrupts` prevents IRQ handlers from racing
             // PIC, PIT, and PS/2 controller initialization.
             unsafe {
-                pic::initialize();
+                controller::initialize();
                 pit::initialize();
             }
             #[cfg(feature = "mouse")]

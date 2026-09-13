@@ -20,7 +20,7 @@ impl FramebufferBytes {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Framebuffer {
     ptr: *mut u8,
     size: PixelSize,

@@ -1,6 +1,9 @@
 //! Legacy 8259 programmable interrupt controller configuration.
 
-use super::outb;
+use super::{
+    controller::{InterruptController, Irq},
+    outb,
+};
 
 const MASTER_OFFSET: u8 = 32;
 const SLAVE_OFFSET: u8 = MASTER_OFFSET + 8;
@@ -10,17 +13,20 @@ const SLAVE_COMMAND: u16 = 0xa0;
 const SLAVE_DATA: u16 = 0xa1;
 const EOI: u8 = 0x20;
 
-pub(super) const TIMER_VECTOR: u8 = MASTER_OFFSET;
-pub(super) const KEYBOARD_VECTOR: u8 = MASTER_OFFSET + 1;
+const TIMER_VECTOR: u8 = MASTER_OFFSET;
+const KEYBOARD_VECTOR: u8 = MASTER_OFFSET + 1;
 #[cfg(feature = "mouse")]
-pub(super) const MOUSE_VECTOR: u8 = SLAVE_OFFSET + 4;
+const MOUSE_VECTOR: u8 = SLAVE_OFFSET + 4;
+
+/// The 8259 PIC implementation used until APIC/IOAPIC discovery exists.
+pub(super) struct LegacyPic;
 
 /// Remaps the PICs and unmasks only IRQs with installed handlers.
 ///
 /// # Safety
 ///
 /// CPU interrupts must be disabled and the target must provide legacy PICs.
-pub(super) unsafe fn initialize() {
+unsafe fn initialize() {
     const ICW1_INIT: u8 = 0x10;
     const ICW1_ICW4: u8 = 0x01;
     const ICW4_8086: u8 = 0x01;
@@ -49,16 +55,40 @@ pub(super) unsafe fn initialize() {
     }
 }
 
-pub(super) fn acknowledge_master() {
+fn acknowledge_master() {
     // SAFETY: called only by an IRQ from the initialized master PIC.
     unsafe { outb(EOI, MASTER_COMMAND) }
 }
 
 #[cfg(feature = "mouse")]
-pub(super) fn acknowledge_slave() {
+fn acknowledge_slave() {
     // SAFETY: called only by an IRQ delivered through the slave PIC.
     unsafe {
         outb(EOI, SLAVE_COMMAND);
         outb(EOI, MASTER_COMMAND);
+    }
+}
+
+impl InterruptController for LegacyPic {
+    unsafe fn initialize(&self) {
+        // SAFETY: delegated caller guarantees interrupts are disabled.
+        unsafe { initialize() }
+    }
+
+    fn vector_for(&self, irq: Irq) -> u8 {
+        match irq {
+            Irq::Timer => TIMER_VECTOR,
+            Irq::Keyboard => KEYBOARD_VECTOR,
+            #[cfg(feature = "mouse")]
+            Irq::Mouse => MOUSE_VECTOR,
+        }
+    }
+
+    fn acknowledge(&self, irq: Irq) {
+        match irq {
+            Irq::Timer | Irq::Keyboard => acknowledge_master(),
+            #[cfg(feature = "mouse")]
+            Irq::Mouse => acknowledge_slave(),
+        }
     }
 }

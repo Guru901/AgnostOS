@@ -11,23 +11,6 @@ use x86_64::instructions::port::Port;
 const DEBUG_PORT: u16 = 0xe9;
 static OVERFLOW_TRIGGERED: AtomicBool = AtomicBool::new(false);
 
-// The Apple-hosted UEFI target used by the smoke test currently leaves this C
-// runtime symbol unresolved in `uefi`.  Supplying it only in this opt-in test
-// build keeps the production image's link surface unchanged.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn wcslen(mut string: *const u16) -> usize {
-    let mut length = 0;
-    // SAFETY: as with C's `wcslen`, the caller supplies a valid,
-    // NUL-terminated UTF-16 string.
-    unsafe {
-        while *string != 0 {
-            length += 1;
-            string = string.add(1);
-        }
-    }
-    length
-}
-
 fn write_byte(byte: u8) {
     // SAFETY: `scripts/qemu-input-smoke.py` creates an `isa-debugcon` device
     // at this port. This module is only compiled for that test build.

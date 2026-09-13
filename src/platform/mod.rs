@@ -43,6 +43,27 @@ pub(crate) fn halt() {
     }
 }
 
+/// Disables maskable interrupts on the kernel target.
+#[inline]
+pub(crate) fn disable_interrupts() {
+    #[cfg(target_arch = "x86_64")]
+    x86_64::instructions::interrupts::disable();
+}
+
+/// Atomically enables interrupts and sleeps until the next interrupt.
+#[inline]
+pub(crate) fn enable_and_hlt() {
+    #[cfg(target_arch = "x86_64")]
+    x86_64::instructions::interrupts::enable_and_hlt();
+}
+
+/// Enables maskable interrupts on the kernel target.
+#[inline]
+pub(crate) fn enable_interrupts() {
+    #[cfg(target_arch = "x86_64")]
+    x86_64::instructions::interrupts::enable();
+}
+
 /// Writes a 32-bit value to an I/O port on x86_64. Host builds do nothing.
 ///
 /// # Safety

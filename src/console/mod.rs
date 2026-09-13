@@ -68,6 +68,12 @@ unsafe impl Send for KWriter {}
 
 static KWRITER: Mutex<Option<KWriter>> = Mutex::new(None);
 
+// This is a copy of the framebuffer descriptor, not a second framebuffer.
+// Exception handlers use it without locking `KWRITER`: a fault can interrupt a
+// normal console operation while that mutex is held.  It is initialized once
+// before interrupts are enabled and remains valid until shutdown.
+static mut EMERGENCY_FRAMEBUFFER: Option<Framebuffer> = None;
+
 /// Returns the line height in pixels for the given font size, including
 /// 2px of line spacing.
 fn font_h(size: RasterHeight) -> usize {
@@ -90,6 +96,9 @@ fn font_w(size: RasterHeight) -> usize {
 /// Must be called before any [`kprint!`] or [`kprintln!`] calls.
 /// Creates the console's crate-private drawing handle.
 pub fn init(fb: Framebuffer) {
+    // SAFETY: startup is single-threaded and runs before interrupts are
+    // enabled.  This location is read-only after initialization.
+    unsafe { core::ptr::addr_of_mut!(EMERGENCY_FRAMEBUFFER).write(Some(fb)) };
     *KWRITER.lock() = Some(KWriter {
         fb,
         column: 0,
@@ -101,6 +110,71 @@ pub fn init(fb: Framebuffer) {
         history: Vec::new(),
         history_index: None,
     });
+}
+
+/// Prints a best-effort diagnostic without allocating or taking the normal
+/// console lock.  It is safe to call from fatal exception handlers.
+///
+/// Output is deliberately stateless and starts at the top-left on each call;
+/// this avoids mutable global cursor state and remains usable if normal
+/// console state is corrupt.  A fault can interrupt framebuffer drawing, so
+/// visual tearing is acceptable in exchange for never deadlocking here.
+pub(crate) fn emergency_print(args: fmt::Arguments) {
+    // SAFETY: initialized before interrupts are enabled and never modified
+    // afterward.  The copied descriptor points at the same static framebuffer
+    // mapping as `KWRITER`.
+    let framebuffer = unsafe { (*core::ptr::addr_of!(EMERGENCY_FRAMEBUFFER)).as_ref() };
+    let Some(framebuffer) = framebuffer else {
+        return;
+    };
+
+    let mut writer = EmergencyWriter {
+        framebuffer,
+        column: 0,
+        row: 0,
+    };
+    let _ = fmt::Write::write_fmt(&mut writer, args);
+}
+
+struct EmergencyWriter<'a> {
+    framebuffer: &'a Framebuffer,
+    column: usize,
+    row: usize,
+}
+
+impl fmt::Write for EmergencyWriter<'_> {
+    fn write_str(&mut self, text: &str) -> fmt::Result {
+        let width = crate::graphics::cell_width(RasterHeight::Size16);
+        let height = crate::graphics::cell_height(RasterHeight::Size16);
+        let max_columns = self.framebuffer.width() / width;
+        let max_rows = self.framebuffer.height() / height;
+
+        for character in text.chars() {
+            if character == '\n' {
+                self.column = 0;
+                self.row = self.row.saturating_add(1);
+                continue;
+            }
+            if self.column >= max_columns {
+                self.column = 0;
+                self.row = self.row.saturating_add(1);
+            }
+            if self.row >= max_rows {
+                return Ok(());
+            }
+            let mut encoded = [0; 4];
+            crate::graphics::draw_text(
+                self.framebuffer,
+                character.encode_utf8(&mut encoded),
+                self.column,
+                self.row,
+                color::WHITE,
+                Some(RasterHeight::Size16),
+            );
+            self.column += 1;
+        }
+        Ok(())
+    }
 }
 
 /// Runs a drawing operation against the console-owned framebuffer.
