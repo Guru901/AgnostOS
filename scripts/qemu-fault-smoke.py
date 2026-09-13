@@ -62,7 +62,11 @@ def main():
             fail(f"invalid opcode did not reach the exception handler: {output}")
         finally:
             process.terminate()
-            process.wait()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
 
 
 if __name__ == "__main__":
