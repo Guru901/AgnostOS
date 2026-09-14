@@ -34,10 +34,10 @@ building substantial storage or user-program support.
 - [ ] Expose memory-map diagnostics from a safe kernel API.
 
 The kernel now copies the map into a fixed static table before initializing the
-heap. It classifies UEFI ranges and marks the selected heap as kernel-owned and
-the GOP framebuffer as device memory. A fixed-storage frame allocator now
-allocates and releases frames only from ranges still classified as usable. The
-heap is still backed by one permanently selected conventional range, and exact
+heap. It classifies UEFI ranges, records the framebuffer as device memory, and
+splits descriptors when reserving ranges. A fixed-storage frame allocator now
+allocates and releases frames only from ranges still classified as usable, and
+the heap obtains its contiguous backing range from that allocator. Exact
 kernel/page-table/stack reservations remain before paging work can begin.
 
 ### 2. Add physical and virtual memory management
@@ -50,7 +50,7 @@ kernel/page-table/stack reservations remain before paging work can begin.
 - [ ] Deliberately map the kernel, heap, framebuffer, device memory, stacks,
   and boot data.
 - [ ] Add guard pages and a controlled out-of-memory path.
-- [ ] Put the heap on top of the page/frame allocator instead of permanently
+- [x] Put the heap on top of the page/frame allocator instead of permanently
   owning one arbitrary conventional-memory range.
 
 This is the most important missing boundary: without paging, the kernel has no
