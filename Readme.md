@@ -46,6 +46,23 @@ The resulting UEFI executable is written to:
 target/x86_64-unknown-uefi/release/agnostos.efi
 ```
 
+To package the UEFI executable as a bootable UEFI ISO:
+
+```sh
+./scripts/build-iso.sh
+```
+
+The ISO is written to `target/agnostos.iso`. You can test it in QEMU with:
+
+```sh
+qemu-system-x86_64 -bios ./bios/OVMF.4m.fd -cdrom target/agnostos.iso
+```
+
+The ISO contains the standard removable-media path
+`EFI/BOOT/BOOTX64.EFI`, so it can also be written to suitable UEFI optical
+media or used as a source for further USB-image packaging. The ISO builder
+requires `mkfs.fat`, `mtools`, and `mkisofs`.
+
 ## Tests
 
 Run the host test suite with:
