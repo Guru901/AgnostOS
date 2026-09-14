@@ -121,6 +121,17 @@ pub(super) extern "x86-interrupt" fn timer(_stack_frame: InterruptStackFrame) {
 pub(super) extern "x86-interrupt" fn keyboard(_stack_frame: InterruptStackFrame) {
     // SAFETY: IRQ1 owns the PS/2 data byte that triggered it.
     let code = unsafe { inb(PS2_DATA) };
+
+    // The keyboard can leave command responses in the shared controller
+    // output buffer while firmware or another PS/2 device is being
+    // initialized.  ACK and RESEND are protocol bytes, not set-1 scancodes;
+    // forwarding them would make the shell see a phantom key and can also
+    // consume the first real input event in the smoke test.
+    if matches!(code, 0xfa | 0xfe) {
+        controller::acknowledge(Irq::Keyboard);
+        return;
+    }
+
     push_keyboard_scancode(KeyboardScancode::new(code));
     controller::acknowledge(Irq::Keyboard);
 }

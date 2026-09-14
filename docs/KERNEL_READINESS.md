@@ -35,14 +35,15 @@ building substantial storage or user-program support.
 
 The kernel now copies the map into a fixed static table before initializing the
 heap. It classifies UEFI ranges and marks the selected heap as kernel-owned and
-the GOP framebuffer as device memory. The current allocator still selects the
-largest conventional region and turns it into a heap; a physical-frame
-allocator must replace that policy before the remaining reservation work can be
-completed.
+the GOP framebuffer as device memory. A fixed-storage frame allocator now
+allocates and releases frames only from ranges still classified as usable. The
+heap is still backed by one permanently selected conventional range, and exact
+kernel/page-table/stack reservations remain before paging work can begin.
 
 ### 2. Add physical and virtual memory management
 
-- [ ] Implement a 4 KiB physical-frame allocator with allocation and release.
+- [x] Implement a fixed-storage 4 KiB physical-frame allocator with allocation
+  and release.
 - [ ] Define the x86_64 virtual-address layout and its ownership rules.
 - [ ] Create page-table mapping/unmapping primitives with checked alignment and
   permission flags.

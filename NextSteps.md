@@ -19,10 +19,10 @@ kernel, ACPI, runtime, and device ranges, and marks the heap and framebuffer.
 
 ## 3. Build a physical-frame allocator
 
-Replace the current "largest conventional region is the heap" policy with a
-page-frame allocator that can allocate and free 4 KiB physical frames. Keep
-the heap allocator on top of it rather than treating all conventional memory as
-one permanently owned block.
+Implemented on this branch: a fixed-storage allocator can allocate and free
+4 KiB frames and excludes all non-usable ownership classes. The remaining part
+is to put the heap allocator on top of it rather than treating one conventional
+region as permanently owned.
 
 ## 4. Introduce page tables and a virtual-memory layout
 

@@ -25,7 +25,7 @@ pub enum MemoryKind {
 }
 
 impl MemoryKind {
-    fn from_uefi_type(ty: MemoryType) -> Self {
+    const fn from_uefi_type(ty: MemoryType) -> Self {
         match ty {
             MemoryType::CONVENTIONAL => Self::Usable,
             MemoryType::LOADER_CODE | MemoryType::LOADER_DATA => Self::Kernel,
@@ -87,6 +87,16 @@ impl MemoryRange {
     #[must_use]
     pub const fn kind(self) -> MemoryKind {
         self.kind
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn for_test(start: u64, length: u64, uefi_type: MemoryType) -> Self {
+        Self {
+            start,
+            length,
+            uefi_type,
+            kind: MemoryKind::from_uefi_type(uefi_type),
+        }
     }
 }
 

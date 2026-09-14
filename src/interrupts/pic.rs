@@ -31,13 +31,11 @@ unsafe fn initialize() {
     const ICW1_ICW4: u8 = 0x01;
     const ICW4_8086: u8 = 0x01;
 
-    #[cfg(feature = "mouse")]
-    const MASTER_IRQ_MASK: u8 = 0b1111_1000;
-    #[cfg(not(feature = "mouse"))]
-    const MASTER_IRQ_MASK: u8 = 0b1111_1100;
-    #[cfg(feature = "mouse")]
-    const SLAVE_IRQ_MASK: u8 = 0b1110_1111;
-    #[cfg(not(feature = "mouse"))]
+    // Keep all device IRQs masked until the post-UEFI input path is ready.
+    // Some firmware/QEMU combinations leave pending controller interrupts
+    // during setup; delivering one before initialization returns can stall
+    // the boot path.
+    const MASTER_IRQ_MASK: u8 = 0b1111_1111;
     const SLAVE_IRQ_MASK: u8 = 0b1111_1111;
 
     // SAFETY: upheld by `initialize`'s caller.
@@ -90,5 +88,20 @@ impl InterruptController for LegacyPic {
             #[cfg(feature = "mouse")]
             Irq::Mouse => acknowledge_slave(),
         }
+    }
+
+    fn enable_runtime(&self) {
+        // SAFETY: these are the initialized legacy PIC data ports.
+        unsafe {
+            // Enable only IRQ1 first. Timer and cascade IRQs are enabled
+            // after the input smoke path has proven keyboard delivery.
+            outb(0b1111_1101, MASTER_DATA);
+        }
+    }
+
+    #[cfg(feature = "mouse")]
+    fn enable_mouse(&self) {
+        // SAFETY: this is the initialized legacy PIC slave data port.
+        unsafe { outb(0b1110_1111, SLAVE_DATA) };
     }
 }

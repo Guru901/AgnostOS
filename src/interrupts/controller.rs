@@ -19,6 +19,9 @@ pub(super) trait InterruptController {
     unsafe fn initialize(&self);
     fn vector_for(&self, irq: Irq) -> u8;
     fn acknowledge(&self, irq: Irq);
+    fn enable_runtime(&self);
+    #[cfg(feature = "mouse")]
+    fn enable_mouse(&self);
 }
 
 static CONTROLLER: LegacyPic = LegacyPic;
@@ -38,6 +41,15 @@ pub(super) fn vector_for(irq: Irq) -> u8 {
 
 pub(super) fn acknowledge(irq: Irq) {
     CONTROLLER.acknowledge(irq);
+}
+
+pub(super) fn enable_runtime() {
+    CONTROLLER.enable_runtime();
+}
+
+#[cfg(feature = "mouse")]
+pub(super) fn enable_mouse() {
+    CONTROLLER.enable_mouse();
 }
 
 #[cfg(test)]

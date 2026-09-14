@@ -8,6 +8,9 @@ pub mod allocator;
 /// Kernel-owned physical memory map and ownership classifications.
 pub mod memory;
 
+/// Fixed-storage physical 4 KiB frame allocator.
+pub mod frame;
+
 /// Ordered kernel startup sequence and UEFI hand-off.
 pub mod boot;
 
