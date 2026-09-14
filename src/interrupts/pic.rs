@@ -101,7 +101,13 @@ impl InterruptController for LegacyPic {
 
     #[cfg(feature = "mouse")]
     fn enable_mouse(&self) {
-        // SAFETY: this is the initialized legacy PIC slave data port.
-        unsafe { outb(0b1110_1111, SLAVE_DATA) };
+        // IRQ2 is the master-PIC cascade for the slave PIC. Enable it along
+        // with the mouse IRQ; without the cascade, IRQ12 can never reach the
+        // IDT even though the slave mask is open.
+        // SAFETY: these are the initialized legacy PIC data ports.
+        unsafe {
+            outb(0b1111_1000, MASTER_DATA);
+            outb(0b1110_1111, SLAVE_DATA);
+        }
     }
 }
