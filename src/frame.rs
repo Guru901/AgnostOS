@@ -31,9 +31,62 @@ impl FrameAddress {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FrameOwner {
+    Heap,
+    PageTable,
+    KernelStack,
+    Kernel,
+}
+
+#[derive(Debug)]
+pub struct OwnedFrame {
+    frame: FrameAddress,
+    owner: FrameOwner,
+}
+
+impl OwnedFrame {
+    #[must_use]
+    pub const fn address(&self) -> u64 {
+        self.frame.address()
+    }
+
+    #[must_use]
+    pub const fn owner(&self) -> FrameOwner {
+        self.owner
+    }
+
+    pub fn release(self) -> Result<(), FrameError> {
+        release(self.frame)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PhysicalRange {
     start: u64,
     length: u64,
+}
+
+#[derive(Debug)]
+pub struct OwnedPhysicalRange {
+    range: PhysicalRange,
+    owner: FrameOwner,
+}
+
+impl OwnedPhysicalRange {
+    #[must_use]
+    pub const fn start(&self) -> u64 {
+        self.range.start()
+    }
+
+    #[must_use]
+    pub const fn length(&self) -> u64 {
+        self.range.length()
+    }
+
+    #[must_use]
+    pub const fn owner(&self) -> FrameOwner {
+        self.owner
+    }
 }
 
 impl PhysicalRange {
@@ -252,12 +305,31 @@ pub fn allocate() -> Result<FrameAddress, FrameError> {
     allocator.lock().allocate()
 }
 
+/// Allocates a frame with an explicit kernel ownership category.
+pub fn allocate_owned(owner: FrameOwner) -> Result<OwnedFrame, FrameError> {
+    Ok(OwnedFrame {
+        frame: allocate()?,
+        owner,
+    })
+}
+
 /// Allocates one contiguous physical range from the largest available range.
 pub fn allocate_contiguous(frames: u64) -> Result<PhysicalRange, FrameError> {
     let Some(allocator) = FRAME_ALLOCATOR.get() else {
         return Err(FrameError::MemoryMapUnavailable);
     };
     allocator.lock().allocate_contiguous(frames)
+}
+
+/// Allocates a contiguous range with an explicit kernel ownership category.
+pub fn allocate_contiguous_owned(
+    frames: u64,
+    owner: FrameOwner,
+) -> Result<OwnedPhysicalRange, FrameError> {
+    Ok(OwnedPhysicalRange {
+        range: allocate_contiguous(frames)?,
+        owner,
+    })
 }
 
 /// Returns the size of the largest currently contiguous free range in frames.
@@ -330,5 +402,16 @@ mod tests {
         assert_eq!(range.start, 0x10_000);
         assert_eq!(range.length, 3 * PAGE_SIZE);
         assert_eq!(allocator.stats().free_frames, 3);
+    }
+
+    #[test]
+    fn owned_handles_preserve_their_reservation_category() {
+        let owner = FrameOwner::PageTable;
+        let handle = OwnedFrame {
+            frame: FrameAddress(0x1000),
+            owner,
+        };
+        assert_eq!(handle.address(), 0x1000);
+        assert_eq!(handle.owner(), owner);
     }
 }
