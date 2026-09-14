@@ -44,7 +44,10 @@ pub enum HeapError {
 /// This may only be called once, after all UEFI boot services have been used.
 /// The returned region is available for exclusive use by the allocator.
 ///
-pub fn initialize_heap(framebuffer: Option<(usize, usize)>) -> Result<HeapRegion, HeapError> {
+pub fn initialize_heap(
+    framebuffer: Option<(usize, usize)>,
+    kernel_image: (usize, usize),
+) -> Result<HeapRegion, HeapError> {
     if HEAP_SIZE.load(Ordering::Relaxed) != 0 {
         return Err(HeapError::AlreadyInitialized);
     }
@@ -56,6 +59,16 @@ pub fn initialize_heap(framebuffer: Option<(usize, usize)>) -> Result<HeapRegion
     BOOT_SERVICES_EXITED.store(true, Ordering::Release);
 
     memory::initialize(&memory_map, framebuffer).map_err(|_| HeapError::MemoryMapUnavailable)?;
+    memory::reserve(kernel_image.0, kernel_image.1, memory::MemoryKind::Kernel)
+        .map_err(|_| HeapError::MemoryReservationFailed)?;
+    let stack_marker = 0u8;
+    let stack_page = (&stack_marker as *const u8 as usize) & !(4096 - 1);
+    memory::reserve(
+        stack_page.saturating_sub(32 * 4096),
+        64 * 4096,
+        memory::MemoryKind::Kernel,
+    )
+    .map_err(|_| HeapError::MemoryReservationFailed)?;
 
     // The heap is now backed by frames removed from the frame allocator. This
     // keeps all physical ownership decisions in one subsystem instead of

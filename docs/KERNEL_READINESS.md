@@ -30,25 +30,28 @@ building substantial storage or user-program support.
   kernel-owned data before discarding it.
 - [x] Classify usable, reserved, firmware, kernel, framebuffer, and ACPI
   ranges.
-- [ ] Reserve the kernel image, boot data, page tables, stacks, and devices.
-- [ ] Expose memory-map diagnostics from a safe kernel API.
+- [x] Reserve the kernel image, boot data, page tables, stacks, and devices.
+- [x] Expose memory-map diagnostics from a safe kernel API.
 
 The kernel now copies the map into a fixed static table before initializing the
 heap. It classifies UEFI ranges, records the framebuffer as device memory, and
 splits descriptors when reserving ranges. A fixed-storage frame allocator now
 allocates and releases frames only from ranges still classified as usable, and
-the heap obtains its contiguous backing range from that allocator. Exact
-kernel/page-table/stack reservations remain before paging work can begin.
+the heap obtains its contiguous backing range from that allocator. The paging
+foundation defines canonical higher-half regions, reserves the loaded image,
+heap, stack window, framebuffer, and every page-table frame, builds checked
+identity mappings, and activates the owned level-4 table in CR3. Higher-half
+relocation, guard pages, and dynamic out-of-memory recovery remain future work.
 
 ### 2. Add physical and virtual memory management
 
 - [x] Implement a fixed-storage 4 KiB physical-frame allocator with allocation
   and release.
-- [ ] Define the x86_64 virtual-address layout and its ownership rules.
-- [ ] Create page-table mapping/unmapping primitives with checked alignment and
+- [x] Define the x86_64 virtual-address layout and its ownership rules.
+- [x] Create page-table mapping/unmapping primitives with checked alignment and
   permission flags.
-- [ ] Deliberately map the kernel, heap, framebuffer, device memory, stacks,
-  and boot data.
+- [x] Deliberately map the kernel, heap, framebuffer, stacks, and boot data.
+- [ ] Add demand-mapped MMIO/device ranges with cache-policy validation.
 - [ ] Add guard pages and a controlled out-of-memory path.
 - [x] Put the heap on top of the page/frame allocator instead of permanently
   owning one arbitrary conventional-memory range.

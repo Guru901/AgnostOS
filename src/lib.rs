@@ -11,6 +11,9 @@ pub mod memory;
 /// Fixed-storage physical 4 KiB frame allocator.
 pub mod frame;
 
+/// x86_64 virtual-address layout and page-table ownership.
+pub mod paging;
+
 /// Ordered kernel startup sequence and UEFI hand-off.
 pub mod boot;
 
