@@ -31,6 +31,21 @@ const HIGH_CANONICAL_MIN: u64 = 0xffff_8000_0000_0000;
 const MAX_PAGE_TABLE_FRAMES: usize = 512;
 const RECURSIVE_INDEX: u16 = 510;
 
+#[repr(align(4096))]
+struct PageTableStorage(PageTable);
+
+// UEFI is required to keep the loaded image reachable while this bootstrap
+// runs. Keeping the bootstrap tables inside that image avoids assuming that
+// arbitrary conventional physical memory is identity-mapped on every machine.
+static mut PAGE_TABLE_STORAGE: [PageTableStorage; MAX_PAGE_TABLE_FRAMES + 1] =
+    [const { PageTableStorage(PageTable::new()) }; MAX_PAGE_TABLE_FRAMES + 1];
+
+fn storage_address(index: usize) -> u64 {
+    // SAFETY: callers keep `index` within PAGE_TABLE_STORAGE's fixed bounds;
+    // addr_of_mut avoids creating a Rust reference to mutable static storage.
+    unsafe { core::ptr::addr_of_mut!(PAGE_TABLE_STORAGE[index].0) as u64 }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum VirtualRangeError {
     Empty,
@@ -154,8 +169,8 @@ impl PageTableArena {
         if self.count == MAX_PAGE_TABLE_FRAMES {
             return None;
         }
-        let owned = frame::allocate_owned(frame::FrameOwner::PageTable).ok()?;
-        let address = owned.address();
+        let address = storage_address(self.count + 1);
+        let owned = frame::OwnedFrame::from_reserved(address, frame::FrameOwner::PageTable)?;
         let address_usize = usize::try_from(address).ok()?;
         if memory::reserve(
             address_usize,
@@ -167,7 +182,8 @@ impl PageTableArena {
             let _ = owned.release();
             return None;
         }
-        // SAFETY: this newly allocated frame is aligned and still identity mapped.
+        // SAFETY: this image-resident frame is aligned and reachable through
+        // the current UEFI image mapping.
         unsafe { ptr::write(address_usize as *mut PageTable, PageTable::new()) };
         self.addresses[self.count] = address;
         self.frames[self.count] = Some(owned);
@@ -337,8 +353,9 @@ pub fn initialize(
     if size_of::<PageTable>() != PAGE_SIZE as usize {
         return Err(PagingError::InvalidPageTableSize);
     }
-    let owned = frame::allocate_owned(frame::FrameOwner::PageTable).map_err(PagingError::Frame)?;
-    let address = owned.address();
+    let address = storage_address(0);
+    let owned = frame::OwnedFrame::from_reserved(address, frame::FrameOwner::PageTable)
+        .ok_or(PagingError::AddressTooLarge)?;
     let address_usize = usize::try_from(address).map_err(|_| PagingError::AddressTooLarge)?;
     if let Err(error) = memory::reserve(
         address_usize,
@@ -348,7 +365,8 @@ pub fn initialize(
         let _ = owned.release();
         return Err(PagingError::MemoryMap(error));
     }
-    // SAFETY: the frame is aligned, owned, and writable through the firmware identity mapping.
+    // SAFETY: the frame is aligned, part of the loaded image, and writable
+    // through the current UEFI image mapping.
     unsafe { ptr::write(address_usize as *mut PageTable, PageTable::new()) };
     PAGE_TABLE_ROOT.call_once(|| {
         Mutex::new(PageTableRoot {

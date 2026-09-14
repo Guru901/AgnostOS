@@ -45,6 +45,13 @@ pub struct OwnedFrame {
 }
 
 impl OwnedFrame {
+    pub(crate) const fn from_reserved(address: u64, owner: FrameOwner) -> Option<Self> {
+        let Some(frame) = FrameAddress::new(address) else {
+            return None;
+        };
+        Some(Self { frame, owner })
+    }
+
     #[must_use]
     pub const fn address(&self) -> u64 {
         self.frame.address()
