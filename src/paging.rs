@@ -172,16 +172,6 @@ impl PageTableArena {
         let address = storage_address(self.count + 1);
         let owned = frame::OwnedFrame::from_reserved(address, frame::FrameOwner::PageTable)?;
         let address_usize = usize::try_from(address).ok()?;
-        if memory::reserve(
-            address_usize,
-            PAGE_SIZE as usize,
-            memory::MemoryKind::Kernel,
-        )
-        .is_err()
-        {
-            let _ = owned.release();
-            return None;
-        }
         // SAFETY: this image-resident frame is aligned and reachable through
         // the current UEFI image mapping.
         unsafe { ptr::write(address_usize as *mut PageTable, PageTable::new()) };
@@ -357,14 +347,6 @@ pub fn initialize(
     let owned = frame::OwnedFrame::from_reserved(address, frame::FrameOwner::PageTable)
         .ok_or(PagingError::AddressTooLarge)?;
     let address_usize = usize::try_from(address).map_err(|_| PagingError::AddressTooLarge)?;
-    if let Err(error) = memory::reserve(
-        address_usize,
-        PAGE_SIZE as usize,
-        memory::MemoryKind::Kernel,
-    ) {
-        let _ = owned.release();
-        return Err(PagingError::MemoryMap(error));
-    }
     // SAFETY: the frame is aligned, part of the loaded image, and writable
     // through the current UEFI image mapping.
     unsafe { ptr::write(address_usize as *mut PageTable, PageTable::new()) };
