@@ -120,6 +120,11 @@ impl Framebuffer {
         self.stride
     }
 
+    /// Returns the physical byte range represented by the GOP framebuffer.
+    pub(crate) fn physical_range(&self) -> (usize, usize) {
+        (self.ptr as usize, self.byte_len.get())
+    }
+
     pub(crate) const fn width(&self) -> usize {
         self.size.width()
     }

@@ -33,7 +33,7 @@ pub fn initialize() -> Status {
     console::init(framebuffer);
     uefi::println!("Exiting boot services in 1 seconds...");
 
-    let heap_region = match allocator::initialize_heap() {
+    let heap_region = match allocator::initialize_heap(Some(framebuffer.physical_range())) {
         Ok(region) => region,
         Err(error) => fatal("heap initialization failed", error),
     };
