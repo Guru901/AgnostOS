@@ -34,13 +34,19 @@ fn halt() -> ! {
 fn fatal_exception(name: &str, stack_frame: InterruptStackFrame) -> ! {
     #[cfg(feature = "fault-smoke")]
     crate::fault_smoke::exception_entered();
-    crate::console::emergency_print(format_args!("EXCEPTION: {name}\n{stack_frame:#?}\n"));
+    crate::console::emergency_print(format_args!(
+        "EXCEPTION: {name}\nRIP: {:#x} RSP: {:#x}\n{stack_frame:#?}\n",
+        stack_frame.instruction_pointer.as_u64(),
+        stack_frame.stack_pointer.as_u64(),
+    ));
     halt()
 }
 
 fn fatal_exception_with_code(name: &str, stack_frame: InterruptStackFrame, error_code: u64) -> ! {
     crate::console::emergency_print(format_args!(
-        "EXCEPTION: {name} (error code: {error_code:#x})\n{stack_frame:#?}\n"
+        "EXCEPTION: {name} (error code: {error_code:#x})\nRIP: {:#x} RSP: {:#x}\n{stack_frame:#?}\n",
+        stack_frame.instruction_pointer.as_u64(),
+        stack_frame.stack_pointer.as_u64(),
     ));
     halt()
 }

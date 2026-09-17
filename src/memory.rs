@@ -89,6 +89,11 @@ impl MemoryRange {
         self.kind
     }
 
+    #[must_use]
+    const fn contains(self, address: u64) -> bool {
+        address >= self.start && address < self.end()
+    }
+
     #[cfg(test)]
     pub(crate) const fn for_test(start: u64, length: u64, uefi_type: MemoryType) -> Self {
         Self {
@@ -119,6 +124,16 @@ impl MemoryMapSnapshot {
 
     pub fn ranges(&self) -> &[MemoryRange] {
         &self.ranges[..self.count]
+    }
+
+    /// Returns the ownership classification for a physical address in the
+    /// snapshot.
+    #[must_use]
+    pub fn kind_at(&self, address: u64) -> Option<MemoryKind> {
+        self.ranges()
+            .iter()
+            .find(|range| range.contains(address))
+            .map(|range| range.kind())
     }
 
     fn copy_from<M: MemoryMap>(map: &M) -> Result<Self, MemoryMapError> {
@@ -325,6 +340,12 @@ pub fn reserve(start: usize, length: usize, kind: MemoryKind) -> Result<(), Memo
 #[must_use]
 pub fn snapshot() -> Option<MemoryMapSnapshot> {
     MEMORY_MAP.get().map(|map| *map.lock())
+}
+
+/// Returns the ownership classification for a physical address.
+#[must_use]
+pub fn kind_at(address: u64) -> Option<MemoryKind> {
+    snapshot()?.kind_at(address)
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

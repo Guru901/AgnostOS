@@ -147,6 +147,7 @@ pub enum PagingError {
     InvalidPageTableSize,
     MappingFailed,
     UnmappingFailed,
+    NotDeviceMemory,
     Range(VirtualRangeError),
 }
 
@@ -289,6 +290,26 @@ pub fn map_page(
     Ok(())
 }
 
+/// Maps one physical device page using the kernel's safe MMIO policy.
+///
+/// Device pages must be explicitly classified as device memory and are always
+/// mapped writable, non-executable, and uncached. Callers that need a
+/// different cache policy must add a platform-specific validation path first.
+pub fn map_device_page(virtual_address: u64, physical_address: u64) -> Result<(), PagingError> {
+    let range = VirtualRange::new(physical_address, PAGE_SIZE).map_err(PagingError::Range)?;
+    if memory::kind_at(range.start()) != Some(memory::MemoryKind::Device) {
+        return Err(PagingError::NotDeviceMemory);
+    }
+    map_page(
+        virtual_address,
+        physical_address,
+        PageTableFlags::PRESENT
+            | PageTableFlags::WRITABLE
+            | PageTableFlags::NO_CACHE
+            | PageTableFlags::NO_EXECUTE,
+    )
+}
+
 /// Unmaps one checked page and returns its physical frame address.
 pub fn unmap_page(virtual_address: u64) -> Result<u64, PagingError> {
     let range = VirtualRange::new(virtual_address, PAGE_SIZE).map_err(PagingError::Range)?;
@@ -402,9 +423,12 @@ pub fn initialize(
 
     let stack_marker = 0u8;
     let stack_page = (&stack_marker as *const u8 as u64) & !(PAGE_SIZE - 1);
+    // Leave one unmapped guard page on either side of the bootstrap stack
+    // window. A stack overflow/underflow should become a diagnosed page fault,
+    // not silently corrupt adjacent kernel state.
     map_range(
-        stack_page.saturating_sub(32 * PAGE_SIZE),
-        64 * PAGE_SIZE,
+        stack_page.saturating_sub(31 * PAGE_SIZE),
+        62 * PAGE_SIZE,
         PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::NO_EXECUTE,
     )?;
 
