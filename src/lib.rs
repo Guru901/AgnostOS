@@ -64,3 +64,6 @@ pub mod mouse;
 pub mod shell;
 
 pub mod commands;
+
+/// Allocation-free cooperative task scheduler.
+pub mod task;
