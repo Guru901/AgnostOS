@@ -17,12 +17,15 @@ use stack::TaskStack;
 pub const MAX_TASKS: usize = 64;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct TaskId(usize);
+pub struct TaskId {
+    index: usize,
+    generation: u32,
+}
 
 impl TaskId {
     #[must_use]
     pub const fn index(self) -> usize {
-        self.0
+        self.index
     }
 }
 
@@ -50,6 +53,7 @@ pub type TaskEntry = fn() -> TaskAction;
 pub enum SchedulerError {
     NoTaskSlots,
     InvalidTask,
+    TaskNotFinished,
 }
 
 impl fmt::Display for SchedulerError {
@@ -57,6 +61,7 @@ impl fmt::Display for SchedulerError {
         formatter.write_str(match self {
             Self::NoTaskSlots => "no task slots available",
             Self::InvalidTask => "invalid task identifier",
+            Self::TaskNotFinished => "task has not finished",
         })
     }
 }
@@ -80,6 +85,7 @@ pub struct Scheduler {
     tasks: [Option<Task>; MAX_TASKS],
     stacks: [TaskStack; MAX_TASKS],
     contexts: [TaskContext; MAX_TASKS],
+    generations: [u32; MAX_TASKS],
     next: usize,
 }
 
@@ -90,6 +96,7 @@ impl Scheduler {
             tasks: [None; MAX_TASKS],
             stacks: [TaskStack::new(); MAX_TASKS],
             contexts: [TaskContext::new(); MAX_TASKS],
+            generations: [0; MAX_TASKS],
             next: 0,
         }
     }
@@ -108,13 +115,28 @@ impl Scheduler {
             entry,
             state: TaskState::Ready,
         });
+        self.generations[index] = self.generations[index].wrapping_add(1).max(1);
         self.contexts[index].stack_pointer = self.stacks[index].top();
-        Ok(TaskId(index))
+        Ok(TaskId {
+            index,
+            generation: self.generations[index],
+        })
     }
 
     #[must_use]
     pub fn state(&self, task: TaskId) -> Option<TaskState> {
-        self.tasks.get(task.0)?.as_ref().map(|task| task.state)
+        Some(self.valid_task(task).ok()??.state)
+    }
+
+    /// Reclaims a finished task slot so it can be reused by a later spawn.
+    pub fn reap(&mut self, task: TaskId) -> Result<(), SchedulerError> {
+        let slot = self.valid_task(task)?.ok_or(SchedulerError::InvalidTask)?;
+        if slot.state != TaskState::Finished {
+            return Err(SchedulerError::TaskNotFinished);
+        }
+        self.tasks[task.index] = None;
+        self.contexts[task.index] = TaskContext::new();
+        Ok(())
     }
 
     /// Returns the saved CPU context for a task.
@@ -124,15 +146,15 @@ impl Scheduler {
     /// scheduler's context-switch path.
     #[must_use]
     pub fn context(&self, task: TaskId) -> Option<&TaskContext> {
-        self.tasks.get(task.0)?.as_ref()?;
-        self.contexts.get(task.0)
+        self.valid_task(task).ok()??;
+        self.contexts.get(task.index)
     }
 
     /// Returns the stack owned by a task.
     #[must_use]
     pub fn stack(&self, task: TaskId) -> Option<&TaskStack> {
-        self.tasks.get(task.0)?.as_ref()?;
-        self.stacks.get(task.0)
+        self.valid_task(task).ok()??;
+        self.stacks.get(task.index)
     }
 
     /// Wakes all tasks whose sleep deadline has elapsed.
@@ -157,7 +179,10 @@ impl Scheduler {
         let Some(index) = self.find_next_ready() else {
             return Ok(None);
         };
-        let task_id = TaskId(index);
+        let task_id = TaskId {
+            index,
+            generation: self.generations[index],
+        };
         let entry = {
             let task = self.tasks[index]
                 .as_mut()
@@ -199,6 +224,13 @@ impl Scheduler {
         (0..MAX_TASKS)
             .map(|offset| (self.next + offset) % MAX_TASKS)
             .find(|&index| self.tasks[index].is_some_and(|task| task.state == TaskState::Ready))
+    }
+
+    fn valid_task(&self, task: TaskId) -> Result<Option<&Task>, SchedulerError> {
+        if task.index >= MAX_TASKS || self.generations[task.index] != task.generation {
+            return Err(SchedulerError::InvalidTask);
+        }
+        Ok(self.tasks[task.index].as_ref())
     }
 }
 
@@ -270,5 +302,21 @@ mod tests {
         assert_eq!(scheduler.state(task), Some(TaskState::Finished));
         assert_eq!(scheduler.run_next(0).unwrap(), None);
         assert_eq!(scheduler.stats().task_count, 1);
+    }
+
+    #[test]
+    fn reaping_releases_a_slot_and_invalidates_the_old_id() {
+        let mut scheduler = Scheduler::new();
+        let old = scheduler.spawn(exiting_task).unwrap();
+        scheduler.run_next(0).unwrap();
+        scheduler.reap(old).unwrap();
+        assert_eq!(scheduler.state(old), None);
+
+        let replacement = scheduler.spawn(exiting_task).unwrap();
+        assert_ne!(old, replacement);
+        assert_eq!(
+            scheduler.reap(replacement),
+            Err(SchedulerError::TaskNotFinished)
+        );
     }
 }
