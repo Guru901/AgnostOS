@@ -16,7 +16,7 @@ pub struct FrameAddress(u64);
 
 impl FrameAddress {
     #[must_use]
-    pub const fn new(address: u64) -> Option<Self> {
+    pub(crate) const fn new(address: u64) -> Option<Self> {
         if address.is_multiple_of(PAGE_SIZE) {
             Some(Self(address))
         } else {
@@ -141,6 +141,8 @@ pub enum FrameError {
 struct FrameAllocator {
     ranges: [FreeRange; MAX_FREE_RANGES],
     range_count: usize,
+    managed: [FreeRange; MAX_FREE_RANGES],
+    managed_count: usize,
     total_frames: u64,
     free_frames: u64,
 }
@@ -154,11 +156,16 @@ impl FrameAllocator {
         let mut allocator = Self {
             ranges: [empty; MAX_FREE_RANGES],
             range_count: 0,
+            managed: [empty; MAX_FREE_RANGES],
+            managed_count: 0,
             total_frames: 0,
             free_frames: 0,
         };
         for range in ranges {
-            if range.kind() != MemoryKind::Usable || allocator.range_count == MAX_FREE_RANGES {
+            if range.kind() != MemoryKind::Usable
+                || allocator.range_count == MAX_FREE_RANGES
+                || allocator.managed_count == MAX_FREE_RANGES
+            {
                 continue;
             }
             let frames = range.length() / PAGE_SIZE;
@@ -170,6 +177,11 @@ impl FrameAllocator {
                 frames,
             };
             allocator.range_count += 1;
+            allocator.managed[allocator.managed_count] = FreeRange {
+                start: range.start(),
+                frames,
+            };
+            allocator.managed_count += 1;
             allocator.total_frames = allocator.total_frames.saturating_add(frames);
             allocator.free_frames = allocator.free_frames.saturating_add(frames);
         }
@@ -229,6 +241,12 @@ impl FrameAllocator {
     fn release(&mut self, frame: FrameAddress) -> Result<(), FrameError> {
         let address = frame.address();
         if !address.is_multiple_of(PAGE_SIZE) {
+            return Err(FrameError::InvalidAddress);
+        }
+        if !self.managed[..self.managed_count]
+            .iter()
+            .any(|range| address >= range.start && address.saturating_add(PAGE_SIZE) <= range.end())
+        {
             return Err(FrameError::InvalidAddress);
         }
         let mut index = 0;
@@ -305,7 +323,7 @@ pub fn initialize() -> Result<(), FrameError> {
 }
 
 /// Allocates one 4 KiB physical frame.
-pub fn allocate() -> Result<FrameAddress, FrameError> {
+pub(crate) fn allocate() -> Result<FrameAddress, FrameError> {
     let Some(allocator) = FRAME_ALLOCATOR.get() else {
         return Err(FrameError::MemoryMapUnavailable);
     };
@@ -321,7 +339,7 @@ pub fn allocate_owned(owner: FrameOwner) -> Result<OwnedFrame, FrameError> {
 }
 
 /// Allocates one contiguous physical range from the largest available range.
-pub fn allocate_contiguous(frames: u64) -> Result<PhysicalRange, FrameError> {
+pub(crate) fn allocate_contiguous(frames: u64) -> Result<PhysicalRange, FrameError> {
     let Some(allocator) = FRAME_ALLOCATOR.get() else {
         return Err(FrameError::MemoryMapUnavailable);
     };
@@ -348,7 +366,7 @@ pub fn largest_free_frames() -> Result<u64, FrameError> {
 }
 
 /// Returns a frame to the allocator.
-pub fn release(frame: FrameAddress) -> Result<(), FrameError> {
+pub(crate) fn release(frame: FrameAddress) -> Result<(), FrameError> {
     let Some(allocator) = FRAME_ALLOCATOR.get() else {
         return Err(FrameError::MemoryMapUnavailable);
     };
@@ -409,6 +427,27 @@ mod tests {
         assert_eq!(range.start, 0x10_000);
         assert_eq!(range.length, 3 * PAGE_SIZE);
         assert_eq!(allocator.stats().free_frames, 3);
+    }
+
+    #[test]
+    fn rejects_contiguous_frame_count_overflow_without_mutating_state() {
+        let mut allocator = FrameAllocator::new(&[usable(0x1000, 2)]);
+        let before = allocator.stats();
+        assert_eq!(
+            allocator.allocate_contiguous(u64::MAX),
+            Err(FrameError::OutOfMemory)
+        );
+        assert_eq!(allocator.stats(), before);
+    }
+
+    #[test]
+    fn rejects_release_outside_a_free_or_allocated_frame_boundary() {
+        let mut allocator = FrameAllocator::new(&[usable(0x1000, 2)]);
+        let _ = allocator.allocate().unwrap();
+        assert_eq!(
+            allocator.release(FrameAddress(0x9000)),
+            Err(FrameError::InvalidAddress)
+        );
     }
 
     #[test]

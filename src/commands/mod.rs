@@ -56,6 +56,9 @@ pub(crate) fn run_command(command: &str) {
                     kprintln!("frames total:   {}", frames.total_frames);
                     kprintln!("frames free:    {}", frames.free_frames);
                     kprintln!("frame ranges:   {}", frames.free_ranges);
+                    if let Ok(largest) = frame::largest_free_frames() {
+                        kprintln!("largest free:   {} frames", largest);
+                    }
                 }
             }
         }

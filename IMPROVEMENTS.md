@@ -1,0 +1,79 @@
+# Project improvement audit
+
+Audit date: 2026-09-18
+
+This is a working backlog from a repository-wide pass over the Rust modules,
+tests, scripts, CI workflow, and project documentation. Items are ordered by
+risk and dependency. Completed items remain here so future work has context.
+
+## Completed on this branch
+
+- [x] Make host tests independent of the UEFI `build-std` Cargo configuration.
+  The previous `scripts/test.sh` and CI commands still loaded
+  `.cargo/config.toml` and failed with a duplicate `core` lang item. Host
+  tests now run from a clean temporary project copy.
+- [x] Make the QEMU skip message accurate for both smoke tests.
+- [x] Remove stale task-module documentation that claimed context preparation
+  had not been added.
+- [x] Pin the repository and helper scripts to the CI nightly toolchain, while
+  allowing `RUST_TOOLCHAIN` overrides for local experimentation. Document the
+  formatter and shared host-test entry point for contributors.
+- [x] Add a QEMU timer smoke test. The `timer-smoke` feature emits `T\n` on
+  the debug console after ten PIT IRQs; the test treats that marker as its
+  expected success signal and keeps the feature out of normal builds.
+
+## Backlog
+
+### High priority
+
+- [ ] Add an explicit `cargo fmt --check` and host-test entry point to the
+  contributor workflow, and make CI use the pinned toolchain consistently in
+  `scripts/test.sh` rather than the moving `nightly` alias.
+- [x] Add a QEMU timer smoke test and document its expected exit signal. The
+  timer conversion is unit-tested, but boot-time IRQ delivery and the
+  `uptime` command are not verified by the current smoke tests.
+- [x] Complete CPU exception coverage for page faults, general protection,
+  divide errors, invalid opcodes, alignment checks, and machine checks. The
+  current fault smoke path covers only invalid opcode handling. The IDT now
+  installs handlers for the listed fatal exception classes; targeted fault
+  smoke coverage beyond invalid opcode remains future work.
+- [ ] Audit page-table activation on real hardware: validate every mapped
+  range against the memory map, add cache-policy handling for MMIO, and test
+  failure paths before enabling CR3.
+- [x] Replace the public raw `FrameAddress` release path with crate-private
+  primitives and ownership-aware handles. Releases are also checked against
+  the managed usable ranges before mutating the free list.
+
+### Medium priority
+
+- [x] Expand `meminfo` with frame availability and largest-free-range data;
+  allocator usage and allocation-failure counters remain future work.
+- [ ] Bound and report shell input growth. The shell currently appends to an
+- [x] Bound shell input growth to 512 editable characters before rendering.
+  Allocation failure handling for the kernel-wide allocator remains a future
+  concern, but a single command can no longer grow without limit.
+- [ ] Define a narrow device/console/timer interface so PS/2, PIC, PIT, UEFI,
+  and raw port I/O do not leak into higher-level policy.
+- [ ] Add an idle abstraction with an interrupt-safe wake-up contract and
+  document which locks and operations are legal in IRQ context.
+- [ ] Give task stacks an explicit guard/reservation policy and move them from
+  fixed static storage to owned physical frames when the scheduler grows.
+- [x] Add negative tests for frame-count overflow, invalid frame release, and
+  failed memory reservations; failed operations preserve allocator/map state.
+
+### Lower priority
+
+- [ ] Add a read-only filesystem or boot archive path before implementing
+  writable storage.
+- [x] Add CI coverage for the ISO builder and both allocator feature modes,
+  including the required host tools. The host-test script covers both feature
+  modes and CI now installs the ISO builder dependencies and runs it.
+- [x] Normalize the most visible project documentation spelling,
+  capitalization, and naming inconsistencies.
+
+## Verification baseline
+
+For each completed item, run formatting, both host-test feature sets, the UEFI
+release build, and the relevant QEMU smoke test when the required tools are
+installed. Keep hardware-facing behavior behind deterministic smoke tests and
+keep pure parsing, allocator, scheduler, and rendering behavior in host tests.

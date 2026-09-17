@@ -1,8 +1,7 @@
 //! Architecture context representation for task switching.
 //!
-//! The scheduler does not invoke [`switch`] yet. Keeping this primitive
-//! isolated lets its ABI and safety contract be reviewed independently from
-//! task lifetime and scheduling policy.
+//! The scheduler prepares contexts for this primitive, while keeping the ABI
+//! and safety contract isolated from task lifetime and scheduling policy.
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
