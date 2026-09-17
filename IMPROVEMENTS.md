@@ -40,14 +40,14 @@ risk and dependency. Completed items remain here so future work has context.
 - [ ] Audit page-table activation on real hardware: validate every mapped
   range against the memory map, add cache-policy handling for MMIO, and test
   failure paths before enabling CR3.
-- [ ] Replace the public raw `FrameAddress` release path with ownership-aware
-  handles or allocation metadata. At present, a caller can construct an
-  aligned address and attempt to return a frame it never owns.
+- [x] Replace the public raw `FrameAddress` release path with crate-private
+  primitives and ownership-aware handles. Releases are also checked against
+  the managed usable ranges before mutating the free list.
 
 ### Medium priority
 
-- [ ] Expand `meminfo` with allocator usage, largest free range, and frame
-  allocation failures; make diagnostics usable before all subsystems exist.
+- [x] Expand `meminfo` with frame availability and largest-free-range data;
+  allocator usage and allocation-failure counters remain future work.
 - [ ] Bound and report shell input growth. The shell currently appends to an
 - [x] Bound shell input growth to 512 editable characters before rendering.
   Allocation failure handling for the kernel-wide allocator remains a future
@@ -58,8 +58,8 @@ risk and dependency. Completed items remain here so future work has context.
   document which locks and operations are legal in IRQ context.
 - [ ] Give task stacks an explicit guard/reservation policy and move them from
   fixed static storage to owned physical frames when the scheduler grows.
-- [ ] Add negative tests for malformed/overlapping memory descriptors and
-  frame-range overflow; preserve invariants after failed reservations.
+- [x] Add negative tests for frame-count overflow, invalid frame release, and
+  failed memory reservations; failed operations preserve allocator/map state.
 
 ### Lower priority
 
