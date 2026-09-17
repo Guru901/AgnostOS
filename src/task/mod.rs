@@ -53,6 +53,13 @@ pub enum TaskAction {
 
 pub type TaskEntry = fn() -> TaskAction;
 
+/// Initial return target for a task context.
+pub(crate) extern "C" fn task_trampoline() -> ! {
+    loop {
+        core::hint::spin_loop();
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SchedulerError {
     NoTaskSlots,
@@ -125,7 +132,6 @@ impl Scheduler {
             state: TaskState::Ready,
         });
         self.generations[index] = self.generations[index].wrapping_add(1).max(1);
-        self.contexts[index].stack_pointer = self.stacks[index].top();
         Ok(TaskId {
             index,
             generation: self.generations[index],
@@ -179,9 +185,9 @@ impl Scheduler {
 
     /// Returns the saved CPU context for a task.
     ///
-    /// The context is currently prepared but not switched to. A trampoline
-    /// must be installed at the top of the stack before this is used by the
-    /// scheduler's context-switch path.
+    /// Returns the saved CPU context for a task. Its stack frame is prepared
+    /// immediately before the task is executed, after the scheduler's final
+    /// location is known.
     #[must_use]
     pub fn context(&self, task: TaskId) -> Option<&TaskContext> {
         self.valid_task(task).ok()??;
@@ -221,6 +227,8 @@ impl Scheduler {
             index,
             generation: self.generations[index],
         };
+        self.contexts[index].stack_pointer =
+            self.stacks[index].initialize_frame(&self.contexts[index]);
         self.current = Some(task_id);
         let entry = {
             let task = self.tasks[index]

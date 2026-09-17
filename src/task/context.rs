@@ -35,9 +35,11 @@ impl TaskContext {
 ///
 /// # Safety
 ///
-/// Both contexts must point to valid, live stacks with a return address at the
-/// destination stack pointer. The caller must ensure that neither context is
-/// concurrently modified and that the destination task is runnable.
+/// Both contexts must point to valid, live stacks. The destination stack
+/// pointer must reference six words in `rbx`, `rbp`, `r12`–`r15` order,
+/// followed by a valid return address. The caller must ensure that neither
+/// context is concurrently modified and that the destination task is
+/// runnable.
 #[cfg(target_arch = "x86_64")]
 pub unsafe fn switch(from: &mut TaskContext, to: &TaskContext) {
     // SAFETY: upheld by this function's contract. The assembly only accesses
