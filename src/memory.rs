@@ -450,4 +450,27 @@ mod tests {
         assert_eq!(snapshot.ranges()[2].start(), 0x5000);
         assert_eq!(snapshot.ranges()[2].length(), 0x5000);
     }
+
+    #[test]
+    fn failed_reservation_preserves_the_original_map() {
+        let empty = MemoryRange {
+            start: 0,
+            length: 0,
+            uefi_type: MemoryType::RESERVED,
+            kind: MemoryKind::Reserved,
+        };
+        let original = MemoryRange::for_test(0x1000, 0x2000, MemoryType::CONVENTIONAL);
+        let mut snapshot = MemoryMapSnapshot {
+            ranges: [empty; MAX_MEMORY_RANGES],
+            count: 1,
+        };
+        snapshot.ranges[0] = original;
+        let before = snapshot;
+
+        assert_eq!(
+            snapshot.reserve_range(0x8000, 0x1000, MemoryKind::Kernel),
+            Err(MemoryMapError::RangeNotFound)
+        );
+        assert_eq!(snapshot, before);
+    }
 }
