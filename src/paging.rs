@@ -319,11 +319,17 @@ fn map_range(start: u64, length: u64, flags: PageTableFlags) -> Result<(), Pagin
         .checked_add(length)
         .ok_or(PagingError::AddressTooLarge)?;
     let first = start / PAGE_SIZE * PAGE_SIZE;
-    let last = end
-        .checked_add(PAGE_SIZE - 1)
-        .ok_or(PagingError::AddressTooLarge)?
-        / PAGE_SIZE
-        * PAGE_SIZE;
+    // `end` is exclusive.  Do not round an already aligned end up to the
+    // following page, or every exact-page mapping would accidentally include
+    // one page beyond the requested range.
+    let last = if end.is_multiple_of(PAGE_SIZE) {
+        end
+    } else {
+        end.checked_add(PAGE_SIZE - 1)
+            .ok_or(PagingError::AddressTooLarge)?
+            / PAGE_SIZE
+            * PAGE_SIZE
+    };
     let mut address = first;
     while address < last {
         map_page(address, address, flags)?;
@@ -424,6 +430,18 @@ pub fn initialize(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn exact_page_ranges_do_not_round_into_an_extra_page() {
+        let end: u64 = 0x20_000;
+        let rounded = if end.is_multiple_of(PAGE_SIZE) {
+            end
+        } else {
+            (end + PAGE_SIZE - 1) / PAGE_SIZE * PAGE_SIZE
+        };
+        assert_eq!(rounded, end);
+    }
+
     #[test]
     fn layout_regions_are_canonical_and_page_aligned() {
         let layout = VirtualMemoryLayout::new();
