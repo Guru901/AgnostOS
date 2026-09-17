@@ -65,10 +65,11 @@ risk and dependency. Completed items remain here so future work has context.
 
 - [ ] Add a read-only filesystem or boot archive path before implementing
   writable storage.
-- [ ] Add CI coverage for the ISO builder and both allocator feature modes,
-  including the required host tools where the runner supports them.
-- [ ] Normalize project documentation spelling, capitalization, and naming;
-  several older files contain typos and describe completed work inconsistently.
+- [x] Add CI coverage for the ISO builder and both allocator feature modes,
+  including the required host tools. The host-test script covers both feature
+  modes and CI now installs the ISO builder dependencies and runs it.
+- [x] Normalize the most visible project documentation spelling,
+  capitalization, and naming inconsistencies.
 
 ## Verification baseline
 

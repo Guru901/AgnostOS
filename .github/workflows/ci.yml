@@ -24,6 +24,9 @@ jobs:
             rustup \
             qemu-desktop \
             edk2-ovmf \
+            dosfstools \
+            mtools \
+            cdrtools \
             coreutils \
             base-devel
 
@@ -88,3 +91,6 @@ jobs:
               -nographic \
               -bios /usr/share/edk2/x64/OVMF.4m.fd \
               -drive format=raw,file=fat:rw:esp || test $? -eq 124
+
+      - name: Build bootable ISO
+        run: ./scripts/build-iso.sh

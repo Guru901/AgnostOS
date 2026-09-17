@@ -1,6 +1,7 @@
 # Contributing guidelines
 
-Thanks a lot ! for consdiering to contribute to this project this project is focused on learning how a os works by implementing things that a os consists of.
+Thanks for considering contributing to this project. AgnostOS is focused on
+learning how an operating system works by implementing its core components.
 
 please follow the following coding style when submitting code.
 
