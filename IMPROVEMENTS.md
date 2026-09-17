@@ -49,8 +49,9 @@ risk and dependency. Completed items remain here so future work has context.
 - [ ] Expand `meminfo` with allocator usage, largest free range, and frame
   allocation failures; make diagnostics usable before all subsystems exist.
 - [ ] Bound and report shell input growth. The shell currently appends to an
-  owned `String` without a user-visible maximum or an allocation-failure
-  policy.
+- [x] Bound shell input growth to 512 editable characters before rendering.
+  Allocation failure handling for the kernel-wide allocator remains a future
+  concern, but a single command can no longer grow without limit.
 - [ ] Define a narrow device/console/timer interface so PS/2, PIC, PIT, UEFI,
   and raw port I/O do not leak into higher-level policy.
 - [ ] Add an idle abstraction with an interrupt-safe wake-up contract and
