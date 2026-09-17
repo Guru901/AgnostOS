@@ -296,8 +296,10 @@ pub fn map_page(
 /// mapped writable, non-executable, and uncached. Callers that need a
 /// different cache policy must add a platform-specific validation path first.
 pub fn map_device_page(virtual_address: u64, physical_address: u64) -> Result<(), PagingError> {
-    let range = VirtualRange::new(physical_address, PAGE_SIZE).map_err(PagingError::Range)?;
-    if memory::kind_at(range.start()) != Some(memory::MemoryKind::Device) {
+    if !physical_address.is_multiple_of(PAGE_SIZE) {
+        return Err(PagingError::Range(VirtualRangeError::Misaligned));
+    }
+    if memory::kind_at(physical_address) != Some(memory::MemoryKind::Device) {
         return Err(PagingError::NotDeviceMemory);
     }
     map_page(

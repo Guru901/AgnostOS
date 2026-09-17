@@ -79,16 +79,16 @@ fn ticks_for_ms(milliseconds: u64) -> u64 {
     if milliseconds == 0 {
         return 0;
     }
-    let denominator = PIT_DIVISOR.saturating_mul(1_000);
-    milliseconds
-        .saturating_mul(PIT_FREQUENCY)
-        .saturating_add(denominator.saturating_sub(1))
-        / denominator
+    let numerator = u128::from(milliseconds) * u128::from(PIT_FREQUENCY);
+    let denominator = u128::from(PIT_DIVISOR) * 1_000;
+    let quotient = numerator / denominator;
+    let rounded_up = quotient + u128::from(!numerator.is_multiple_of(denominator));
+    rounded_up.min(u128::from(u64::MAX)) as u64
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{format_uptime, ticks_for_ms};
+    use super::{PIT_DIVISOR, PIT_FREQUENCY, format_uptime, ticks_for_ms};
 
     #[test]
     fn formats_subsecond_uptime_as_zero_seconds() {
@@ -110,5 +110,16 @@ mod tests {
         assert_eq!(ticks_for_ms(0), 0);
         assert!(ticks_for_ms(1) >= 1);
         assert!(ticks_for_ms(100) >= 100);
+    }
+
+    #[test]
+    fn converts_large_durations_without_intermediate_overflow() {
+        let numerator = u128::from(u64::MAX) * u128::from(PIT_FREQUENCY);
+        let denominator = u128::from(PIT_DIVISOR) * 1_000;
+        let quotient = numerator / denominator;
+        let expected = (quotient + u128::from(!numerator.is_multiple_of(denominator)))
+            .min(u128::from(u64::MAX)) as u64;
+
+        assert_eq!(ticks_for_ms(u64::MAX), expected);
     }
 }
