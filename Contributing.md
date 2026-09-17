@@ -41,3 +41,16 @@ To prevent mixing up semantic values (like memory addresses, process IDs, or har
   struct ClockSpeedHz(u64);
   fn configure_core(id: CoreId, speed: ClockSpeedHz);
   ```
+
+## Local quality checks
+
+The repository pins the nightly toolchain used by CI. Before opening a change,
+run the formatter and both host-test configurations:
+
+```sh
+cargo fmt --all -- --check
+./scripts/test.sh
+```
+
+Set `RUST_TOOLCHAIN` when using a different installed toolchain for local
+experimentation; CI always uses the pinned version.

@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TEST_WORKDIR="$(mktemp -d)"
-RUST_TOOLCHAIN="${RUST_TOOLCHAIN:-nightly}"
+RUST_TOOLCHAIN="${RUST_TOOLCHAIN:-nightly-2026-08-01}"
 trap 'rm -rf "$TEST_WORKDIR"' EXIT
 
 # The repository uses `.cargo/config.toml` to build `core`/`alloc` for the

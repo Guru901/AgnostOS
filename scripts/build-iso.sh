@@ -6,6 +6,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 EFI_BINARY="$PROJECT_ROOT/target/x86_64-unknown-uefi/release/agnostos.efi"
 OUTPUT_ISO="${1:-$PROJECT_ROOT/target/agnostos.iso}"
+RUST_TOOLCHAIN="${RUST_TOOLCHAIN:-nightly-2026-08-01}"
 WORK_DIR="$(mktemp -d)"
 ESP_IMAGE="$WORK_DIR/esp.img"
 ISO_ROOT="$WORK_DIR/iso-root"
@@ -31,7 +32,7 @@ require_command mkisofs
 cd "$PROJECT_ROOT"
 
 echo "Building the UEFI executable..."
-cargo +nightly build \
+cargo "+$RUST_TOOLCHAIN" build \
     --release \
     --target x86_64-unknown-uefi \
     --features uefi-bin

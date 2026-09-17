@@ -15,8 +15,9 @@ risk and dependency. Completed items remain here so future work has context.
 - [x] Make the QEMU skip message accurate for both smoke tests.
 - [x] Remove stale task-module documentation that claimed context preparation
   had not been added.
-- [x] Let CI select its pinned Rust toolchain when invoking the shared test
-  script, while retaining a local default for interactive use.
+- [x] Pin the repository and helper scripts to the CI nightly toolchain, while
+  allowing `RUST_TOOLCHAIN` overrides for local experimentation. Document the
+  formatter and shared host-test entry point for contributors.
 
 ## Backlog
 
