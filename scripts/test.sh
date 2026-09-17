@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TEST_WORKDIR="$(mktemp -d)"
 RUST_TOOLCHAIN="${RUST_TOOLCHAIN:-nightly-2026-08-01}"
+export RUST_TOOLCHAIN
 trap 'rm -rf "$TEST_WORKDIR"' EXIT
 
 # The repository uses `.cargo/config.toml` to build `core`/`alloc` for the
@@ -28,6 +29,7 @@ cargo "+$RUST_TOOLCHAIN" test --no-default-features --features custom-allocator,
 if command -v qemu-system-x86_64 >/dev/null 2>&1; then
     python3 "$PROJECT_ROOT/scripts/qemu-input-smoke.py"
     python3 "$PROJECT_ROOT/scripts/qemu-fault-smoke.py"
+    python3 "$PROJECT_ROOT/scripts/qemu-timer-smoke.py"
 else
     echo "Skipping QEMU smoke tests: qemu-system-x86_64 is not installed."
 fi

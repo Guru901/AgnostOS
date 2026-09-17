@@ -18,6 +18,9 @@ risk and dependency. Completed items remain here so future work has context.
 - [x] Pin the repository and helper scripts to the CI nightly toolchain, while
   allowing `RUST_TOOLCHAIN` overrides for local experimentation. Document the
   formatter and shared host-test entry point for contributors.
+- [x] Add a QEMU timer smoke test. The `timer-smoke` feature emits `T\n` on
+  the debug console after ten PIT IRQs; the test treats that marker as its
+  expected success signal and keeps the feature out of normal builds.
 
 ## Backlog
 
