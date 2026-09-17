@@ -29,12 +29,14 @@ risk and dependency. Completed items remain here so future work has context.
 - [ ] Add an explicit `cargo fmt --check` and host-test entry point to the
   contributor workflow, and make CI use the pinned toolchain consistently in
   `scripts/test.sh` rather than the moving `nightly` alias.
-- [ ] Add a QEMU timer smoke test and document its expected exit signal. The
+- [x] Add a QEMU timer smoke test and document its expected exit signal. The
   timer conversion is unit-tested, but boot-time IRQ delivery and the
   `uptime` command are not verified by the current smoke tests.
-- [ ] Complete CPU exception coverage for page faults, general protection,
+- [x] Complete CPU exception coverage for page faults, general protection,
   divide errors, invalid opcodes, alignment checks, and machine checks. The
-  current fault smoke path covers only invalid opcode handling.
+  current fault smoke path covers only invalid opcode handling. The IDT now
+  installs handlers for the listed fatal exception classes; targeted fault
+  smoke coverage beyond invalid opcode remains future work.
 - [ ] Audit page-table activation on real hardware: validate every mapped
   range against the memory map, add cache-policy handling for MMIO, and test
   failure paths before enabling CR3.
