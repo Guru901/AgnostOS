@@ -49,17 +49,7 @@ jobs:
         run: cargo +nightly-2026-08-01 fmt --all -- --check
 
       - name: Run host tests
-        run: |
-          TEST_WORKDIR="$(mktemp -d)"
-          trap 'rm -rf "$TEST_WORKDIR"' EXIT
-          cd "$TEST_WORKDIR"
-          cargo +nightly-2026-08-01 test \
-            --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" \
-            --features mouse
-          cargo +nightly-2026-08-01 test \
-            --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" \
-            --no-default-features \
-            --features custom-allocator,mouse
+        run: RUST_TOOLCHAIN=nightly-2026-08-01 ./scripts/test.sh
 
       - name: Run Clippy
         run: |
