@@ -246,6 +246,20 @@ impl Scheduler {
         Ok(Some(task_id))
     }
 
+    /// Runs ready tasks until the scheduler is idle or `budget` dispatches
+    /// have completed. A finite budget prevents a task that continually yields
+    /// from starving the kernel's other work.
+    pub fn run_ready(&mut self, now: u64, budget: usize) -> Result<usize, SchedulerError> {
+        let mut dispatched = 0;
+        while dispatched < budget {
+            if self.run_next(now)?.is_none() {
+                break;
+            }
+            dispatched += 1;
+        }
+        Ok(dispatched)
+    }
+
     #[must_use]
     pub fn stats(&self) -> SchedulerStats {
         let mut stats = SchedulerStats::default();
@@ -370,6 +384,18 @@ mod tests {
         assert_eq!(scheduler.state(task), Some(TaskState::Cancelled));
         scheduler.reap(task).unwrap();
         assert_eq!(scheduler.state(task), None);
+    }
+
+    #[test]
+    fn dispatch_budget_prevents_a_yielding_task_from_monopolizing_the_loop() {
+        let mut scheduler = Scheduler::new();
+        scheduler.spawn(yielding_task).unwrap();
+        assert_eq!(scheduler.run_ready(0, 3).unwrap(), 3);
+        assert_eq!(scheduler.run_ready(0, 0).unwrap(), 0);
+    }
+
+    fn yielding_task() -> TaskAction {
+        TaskAction::Yield
     }
 
     #[test]
