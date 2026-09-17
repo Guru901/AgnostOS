@@ -8,6 +8,12 @@
 
 use core::fmt;
 
+pub mod context;
+pub mod stack;
+
+use context::TaskContext;
+use stack::TaskStack;
+
 pub const MAX_TASKS: usize = 64;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -72,6 +78,8 @@ pub struct SchedulerStats {
 /// A bounded, allocation-free cooperative scheduler.
 pub struct Scheduler {
     tasks: [Option<Task>; MAX_TASKS],
+    stacks: [TaskStack; MAX_TASKS],
+    contexts: [TaskContext; MAX_TASKS],
     next: usize,
 }
 
@@ -80,6 +88,8 @@ impl Scheduler {
     pub const fn new() -> Self {
         Self {
             tasks: [None; MAX_TASKS],
+            stacks: [TaskStack::new(); MAX_TASKS],
+            contexts: [TaskContext::new(); MAX_TASKS],
             next: 0,
         }
     }
@@ -98,12 +108,31 @@ impl Scheduler {
             entry,
             state: TaskState::Ready,
         });
+        self.contexts[index].stack_pointer = self.stacks[index].top();
         Ok(TaskId(index))
     }
 
     #[must_use]
     pub fn state(&self, task: TaskId) -> Option<TaskState> {
         self.tasks.get(task.0)?.as_ref().map(|task| task.state)
+    }
+
+    /// Returns the saved CPU context for a task.
+    ///
+    /// The context is currently prepared but not switched to. A trampoline
+    /// must be installed at the top of the stack before this is used by the
+    /// scheduler's context-switch path.
+    #[must_use]
+    pub fn context(&self, task: TaskId) -> Option<&TaskContext> {
+        self.tasks.get(task.0)?.as_ref()?;
+        self.contexts.get(task.0)
+    }
+
+    /// Returns the stack owned by a task.
+    #[must_use]
+    pub fn stack(&self, task: TaskId) -> Option<&TaskStack> {
+        self.tasks.get(task.0)?.as_ref()?;
+        self.stacks.get(task.0)
     }
 
     /// Wakes all tasks whose sleep deadline has elapsed.
