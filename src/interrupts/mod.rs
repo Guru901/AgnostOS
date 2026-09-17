@@ -15,6 +15,8 @@ mod idt;
 mod pic;
 #[cfg(target_arch = "x86_64")]
 mod pit;
+#[cfg(target_arch = "x86_64")]
+pub(crate) use pit::{PIT_FREQUENCY, divisor as pit_divisor};
 
 #[cfg(target_arch = "x86_64")]
 use spin::Once;
