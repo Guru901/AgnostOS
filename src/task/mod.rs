@@ -34,7 +34,9 @@ pub enum TaskState {
     Ready,
     Running,
     Sleeping { until: u64 },
+    Blocked,
     Finished,
+    Cancelled,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -43,6 +45,8 @@ pub enum TaskAction {
     Yield,
     /// Do not run this task again until the given scheduler tick.
     SleepUntil(u64),
+    /// Block until another subsystem explicitly wakes this task.
+    Block,
     /// Remove this task from future scheduling.
     Exit,
 }
@@ -77,7 +81,10 @@ pub struct SchedulerStats {
     pub task_count: usize,
     pub ready: usize,
     pub sleeping: usize,
+    pub blocked: usize,
     pub running: usize,
+    pub finished: usize,
+    pub cancelled: usize,
 }
 
 /// A bounded, allocation-free cooperative scheduler.
@@ -86,6 +93,7 @@ pub struct Scheduler {
     stacks: [TaskStack; MAX_TASKS],
     contexts: [TaskContext; MAX_TASKS],
     generations: [u32; MAX_TASKS],
+    current: Option<TaskId>,
     next: usize,
 }
 
@@ -97,6 +105,7 @@ impl Scheduler {
             stacks: [TaskStack::new(); MAX_TASKS],
             contexts: [TaskContext::new(); MAX_TASKS],
             generations: [0; MAX_TASKS],
+            current: None,
             next: 0,
         }
     }
@@ -128,10 +137,39 @@ impl Scheduler {
         Some(self.valid_task(task).ok()??.state)
     }
 
+    #[must_use]
+    pub const fn current(&self) -> Option<TaskId> {
+        self.current
+    }
+
+    /// Wakes a blocked task. Sleeping tasks are woken by [`wake_expired`].
+    pub fn wake(&mut self, task: TaskId) -> Result<(), SchedulerError> {
+        let task_slot = self.valid_task(task)?.ok_or(SchedulerError::InvalidTask)?;
+        if task_slot.state == TaskState::Blocked {
+            let Some(task_slot) = self.tasks[task.index].as_mut() else {
+                return Err(SchedulerError::InvalidTask);
+            };
+            task_slot.state = TaskState::Ready;
+        }
+        Ok(())
+    }
+
+    /// Cancels a task that has not already terminated.
+    pub fn cancel(&mut self, task: TaskId) -> Result<(), SchedulerError> {
+        let task_slot = self.valid_task(task)?.ok_or(SchedulerError::InvalidTask)?;
+        if !matches!(task_slot.state, TaskState::Finished | TaskState::Cancelled) {
+            let Some(task_slot) = self.tasks[task.index].as_mut() else {
+                return Err(SchedulerError::InvalidTask);
+            };
+            task_slot.state = TaskState::Cancelled;
+        }
+        Ok(())
+    }
+
     /// Reclaims a finished task slot so it can be reused by a later spawn.
     pub fn reap(&mut self, task: TaskId) -> Result<(), SchedulerError> {
         let slot = self.valid_task(task)?.ok_or(SchedulerError::InvalidTask)?;
-        if slot.state != TaskState::Finished {
+        if !matches!(slot.state, TaskState::Finished | TaskState::Cancelled) {
             return Err(SchedulerError::TaskNotFinished);
         }
         self.tasks[task.index] = None;
@@ -183,6 +221,7 @@ impl Scheduler {
             index,
             generation: self.generations[index],
         };
+        self.current = Some(task_id);
         let entry = {
             let task = self.tasks[index]
                 .as_mut()
@@ -199,8 +238,10 @@ impl Scheduler {
             TaskAction::Yield => TaskState::Ready,
             TaskAction::SleepUntil(until) if until <= now => TaskState::Ready,
             TaskAction::SleepUntil(until) => TaskState::Sleeping { until },
+            TaskAction::Block => TaskState::Blocked,
             TaskAction::Exit => TaskState::Finished,
         };
+        self.current = None;
         self.next = (index + 1) % MAX_TASKS;
         Ok(Some(task_id))
     }
@@ -213,8 +254,10 @@ impl Scheduler {
             match task.state {
                 TaskState::Ready => stats.ready += 1,
                 TaskState::Sleeping { .. } => stats.sleeping += 1,
+                TaskState::Blocked => stats.blocked += 1,
                 TaskState::Running => stats.running += 1,
-                TaskState::Finished => {}
+                TaskState::Finished => stats.finished += 1,
+                TaskState::Cancelled => stats.cancelled += 1,
             }
         }
         stats
@@ -302,6 +345,31 @@ mod tests {
         assert_eq!(scheduler.state(task), Some(TaskState::Finished));
         assert_eq!(scheduler.run_next(0).unwrap(), None);
         assert_eq!(scheduler.stats().task_count, 1);
+    }
+
+    fn blocking_task() -> TaskAction {
+        TaskAction::Block
+    }
+
+    #[test]
+    fn blocked_tasks_require_an_explicit_wake() {
+        let mut scheduler = Scheduler::new();
+        let task = scheduler.spawn(blocking_task).unwrap();
+        assert_eq!(scheduler.run_next(0).unwrap(), Some(task));
+        assert_eq!(scheduler.state(task), Some(TaskState::Blocked));
+        assert_eq!(scheduler.run_next(0).unwrap(), None);
+        scheduler.wake(task).unwrap();
+        assert_eq!(scheduler.run_next(0).unwrap(), Some(task));
+    }
+
+    #[test]
+    fn cancelled_tasks_can_be_reaped() {
+        let mut scheduler = Scheduler::new();
+        let task = scheduler.spawn(first_task).unwrap();
+        scheduler.cancel(task).unwrap();
+        assert_eq!(scheduler.state(task), Some(TaskState::Cancelled));
+        scheduler.reap(task).unwrap();
+        assert_eq!(scheduler.state(task), None);
     }
 
     #[test]
