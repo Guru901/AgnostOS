@@ -13,12 +13,14 @@ import subprocess
 import sys
 import tempfile
 import time
+import os
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
 QEMU = shutil.which("qemu-system-x86_64")
 OVMF = ROOT / "bios" / "OVMF.4m.fd"
+RUST_TOOLCHAIN = os.environ.get("RUST_TOOLCHAIN", "nightly-2026-08-01")
 
 
 def fail(message):
@@ -109,7 +111,7 @@ def main():
 
         subprocess.run(
             [
-                "cargo", "build", "--release", "--target", "x86_64-unknown-uefi",
+                "cargo", f"+{RUST_TOOLCHAIN}", "build", "--release", "--target", "x86_64-unknown-uefi",
                 "--features", "uefi-bin,input-smoke",
             ],
             cwd=ROOT,
