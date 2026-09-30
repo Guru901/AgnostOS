@@ -4,10 +4,12 @@
 //! this fixed static table before the UEFI buffer is discarded and before the
 //! global allocator is initialized.
 
-use core::fmt;
+use core::{fmt, sync::atomic::Ordering};
 
 use spin::{Mutex, Once};
 use uefi::mem::memory_map::{MemoryMap, MemoryType};
+
+use crate::{HEAP_SIZE, HEAP_START, kprintln, memory};
 
 pub const MAX_MEMORY_RANGES: usize = 256;
 const PAGE_SIZE: u64 = 4096;
@@ -359,6 +361,44 @@ pub struct MemorySummary {
     pub runtime_bytes: u64,
     pub reserved_bytes: u64,
     pub unusable_bytes: u64,
+}
+
+impl MemorySummary {
+    pub fn meminfo() {
+        let start = HEAP_START.load(Ordering::Relaxed);
+        let size = HEAP_SIZE.load(Ordering::Relaxed);
+        kprintln!("heap start: {:#x}", start);
+        kprintln!("heap size:  {}mb", size / (1024 * 1024));
+        if let Some(snapshot) = memory::snapshot() {
+            let summary = snapshot.summary();
+            kprintln!("memory ranges: {}", summary.ranges);
+            kprintln!("usable:        {}mb", summary.usable_bytes / (1024 * 1024));
+            kprintln!("kernel-owned:  {}mb", summary.kernel_bytes / (1024 * 1024));
+            kprintln!(
+                "firmware:      {}mb",
+                summary.firmware_bytes / (1024 * 1024)
+            );
+            kprintln!("acpi:           {}mb", summary.acpi_bytes / (1024 * 1024));
+            kprintln!("device/mmio:    {}mb", summary.device_bytes / (1024 * 1024));
+            kprintln!(
+                "runtime:        {}mb",
+                summary.runtime_bytes / (1024 * 1024)
+            );
+            kprintln!(
+                "reserved:       {}mb",
+                summary.reserved_bytes / (1024 * 1024)
+            );
+            kprintln!(
+                "unusable:       {}mb",
+                summary.unusable_bytes / (1024 * 1024)
+            );
+            if let Some(frames) = frame::stats() {
+                kprintln!("frames total:   {}", frames.total_frames);
+                kprintln!("frames free:    {}", frames.free_frames);
+                kprintln!("frame ranges:   {}", frames.free_ranges);
+            }
+        }
+    }
 }
 
 impl MemoryMapSnapshot {

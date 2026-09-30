@@ -2,8 +2,7 @@ mod help;
 mod parser;
 mod shutdown;
 
-use crate::{HEAP_SIZE, HEAP_START, commands::help::help, console, frame, kprintln, memory, timer};
-use core::sync::atomic::Ordering;
+use crate::{commands::help::help, console, kprintln, memory, timer};
 use noto_sans_mono_bitmap::RasterHeight;
 use parser::{Command, parse};
 
@@ -24,41 +23,7 @@ pub(crate) fn run_command(command: &str) {
         }
         Command::History => console::print_history(),
         Command::Echo => kprintln!("{}", args.join(" ")),
-        Command::Meminfo => {
-            let start = HEAP_START.load(Ordering::Relaxed);
-            let size = HEAP_SIZE.load(Ordering::Relaxed);
-            kprintln!("heap start: {:#x}", start);
-            kprintln!("heap size:  {}mb", size / (1024 * 1024));
-            if let Some(snapshot) = memory::snapshot() {
-                let summary = snapshot.summary();
-                kprintln!("memory ranges: {}", summary.ranges);
-                kprintln!("usable:        {}mb", summary.usable_bytes / (1024 * 1024));
-                kprintln!("kernel-owned:  {}mb", summary.kernel_bytes / (1024 * 1024));
-                kprintln!(
-                    "firmware:      {}mb",
-                    summary.firmware_bytes / (1024 * 1024)
-                );
-                kprintln!("acpi:           {}mb", summary.acpi_bytes / (1024 * 1024));
-                kprintln!("device/mmio:    {}mb", summary.device_bytes / (1024 * 1024));
-                kprintln!(
-                    "runtime:        {}mb",
-                    summary.runtime_bytes / (1024 * 1024)
-                );
-                kprintln!(
-                    "reserved:       {}mb",
-                    summary.reserved_bytes / (1024 * 1024)
-                );
-                kprintln!(
-                    "unusable:       {}mb",
-                    summary.unusable_bytes / (1024 * 1024)
-                );
-                if let Some(frames) = frame::stats() {
-                    kprintln!("frames total:   {}", frames.total_frames);
-                    kprintln!("frames free:    {}", frames.free_frames);
-                    kprintln!("frame ranges:   {}", frames.free_ranges);
-                }
-            }
-        }
+        Command::Meminfo => memory::MemorySummary::meminfo(),
         Command::Font => match args.first().copied().unwrap_or("") {
             "16" => console::set_font_size(RasterHeight::Size16),
             "20" => console::set_font_size(RasterHeight::Size20),
