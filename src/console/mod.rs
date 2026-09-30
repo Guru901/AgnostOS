@@ -14,7 +14,7 @@
 
 use crate::commands;
 use crate::{
-    FONT_WEIGHT, PROMPT, color,
+    FONT_WEIGHT, MAX_INPUT_CHARS, PROMPT, color,
     graphics::{
         self, Framebuffer,
         pixel::{PixelCoord, PixelRows, PixelSize},
@@ -319,6 +319,9 @@ pub(crate) fn backspace(line: &mut String) {
 }
 
 pub(crate) fn insert_char(line: &mut String, ch: char) {
+    if line.chars().count() >= MAX_INPUT_CHARS {
+        return;
+    }
     if let Some(writer) = KWRITER.lock().as_mut() {
         writer.input_cursor = writer.input_cursor.min(line.chars().count());
         insert_char_at(line, writer.input_cursor, ch);
@@ -671,6 +674,17 @@ mod tests {
         assert_eq!(move_cursor_left(3), 2);
         assert_eq!(move_cursor_right(0, 3), 1);
         assert_eq!(move_cursor_right(3, 3), 3);
+    }
+
+    #[test]
+    fn input_line_limit_is_enforced_before_rendering() {
+        let mut line = String::new();
+        for _ in 0..MAX_INPUT_CHARS {
+            line.push('x');
+        }
+        assert_eq!(line.chars().count(), MAX_INPUT_CHARS);
+        insert_char(&mut line, 'y');
+        assert_eq!(line.chars().count(), MAX_INPUT_CHARS);
     }
 }
 

@@ -55,6 +55,9 @@ pub(crate) mod input_smoke;
 #[cfg(feature = "fault-smoke")]
 pub(crate) mod fault_smoke;
 
+#[cfg(feature = "timer-smoke")]
+pub(crate) mod timer_smoke;
+
 pub mod timer;
 
 #[cfg(feature = "mouse")]
