@@ -9,7 +9,7 @@ use core::{fmt, sync::atomic::Ordering};
 use spin::{Mutex, Once};
 use uefi::mem::memory_map::{MemoryMap, MemoryType};
 
-use crate::{HEAP_SIZE, HEAP_START, kprintln, memory};
+use crate::{HEAP_SIZE, HEAP_START, frame, kprintln, memory};
 
 pub const MAX_MEMORY_RANGES: usize = 256;
 const PAGE_SIZE: u64 = 4096;
