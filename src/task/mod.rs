@@ -1,10 +1,9 @@
 //! Fixed-storage cooperative kernel task scheduler.
 //!
-//! This is deliberately a scheduler core, not a context switcher yet. A task
-//! entry is a short function that returns a [`TaskAction`] at a cooperative
-//! yield point. The scheduler owns task state and wake-up deadlines; a later
-//! architecture layer will give each task a stack and preserve CPU context
-//! across yields.
+//! This is a fixed-storage cooperative scheduler with architecture context
+//! preparation. A task entry is a short function that returns a [`TaskAction`]
+//! at a cooperative yield point. The scheduler owns task state, stacks, and
+//! wake-up deadlines; preemption and multi-core scheduling remain future work.
 
 use core::fmt;
 
