@@ -2,7 +2,9 @@ use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize};
 
 use noto_sans_mono_bitmap::{FontWeight, RasterHeight};
 
+/// Terminal prompt
 pub(crate) const PROMPT: &str = "> ";
+
 /// Maximum number of editable characters accepted on one shell command line.
 pub(crate) const MAX_INPUT_CHARS: usize = 512;
 
