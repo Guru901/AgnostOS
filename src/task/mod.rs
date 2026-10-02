@@ -28,7 +28,7 @@ impl TaskId {
     }
 }
 
-/// Lifecycle of a spawned slot. Only [`TaskAction`] and explicit wake/cancel change it.
+/// Lifecycle of a spawned slot. [`TaskAction`], [`Scheduler::wake_expired`], and explicit wake/cancel change it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TaskState {
     Ready,
