@@ -39,6 +39,7 @@ fn storage_address(index: usize) -> u64 {
     unsafe { core::ptr::addr_of_mut!(PAGE_TABLE_STORAGE[index].0) as u64 }
 }
 
+/// Why a proposed virtual mapping was rejected before touching page tables.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum VirtualRangeError {
     Empty,
@@ -58,6 +59,7 @@ impl fmt::Display for VirtualRangeError {
     }
 }
 
+/// Page-aligned canonical virtual span used by layout windows and map helpers.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct VirtualRange {
     start: u64,
@@ -65,6 +67,7 @@ pub struct VirtualRange {
 }
 
 impl VirtualRange {
+    /// Inclusive-exclusive physical range; `end_exclusive` must stay canonical.
     pub const fn new(start: u64, length: u64) -> Result<Self, VirtualRangeError> {
         if length == 0 {
             return Err(VirtualRangeError::Empty);
@@ -98,6 +101,10 @@ const fn is_canonical(address: u64) -> bool {
     address <= LOW_CANONICAL_MAX || address >= HIGH_CANONICAL_MIN
 }
 
+/// Fixed higher-half windows (kernel, heap, framebuffer, MMIO, stacks).
+///
+/// These are address *reservations*, not live mappings. [`initialize`] identity
+/// maps the loaded image and framebuffer first so the CPU can keep running.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct VirtualMemoryLayout {
     pub kernel: VirtualRange,
@@ -130,6 +137,7 @@ const fn region(start: u64) -> VirtualRange {
     }
 }
 
+/// Page-table construction and mapping failures.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PagingError {
     AlreadyInitialized,
@@ -144,6 +152,7 @@ pub enum PagingError {
     Range(VirtualRangeError),
 }
 
+/// Image-resident frames used as intermediate page tables during bootstrap.
 #[derive(Debug)]
 struct PageTableArena {
     frames: [Option<frame::OwnedFrame>; MAX_PAGE_TABLE_FRAMES],
@@ -183,6 +192,7 @@ unsafe impl FrameAllocator<Size4KiB> for PageTableArena {
     }
 }
 
+/// Owned PML4 plus the arena of child tables allocated from image storage.
 #[derive(Debug)]
 pub struct PageTableRoot {
     frame: frame::OwnedFrame,
@@ -205,6 +215,7 @@ impl PageTableRoot {
 
 static PAGE_TABLE_ROOT: Once<Mutex<PageTableRoot>> = Once::new();
 static PAGING_ACTIVE: AtomicBool = AtomicBool::new(false);
+/// Returns the live page-table root after [`initialize`], if paging was set up.
 #[must_use]
 pub fn root() -> Option<&'static Mutex<PageTableRoot>> {
     PAGE_TABLE_ROOT.get()

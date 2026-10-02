@@ -6,6 +6,7 @@
 
 use crate::globals::task::{STACK_FRAME_WORDS, TASK_STACK_SIZE};
 
+/// Per-task stack embedded in the scheduler. Not backed by the frame allocator yet.
 #[repr(align(16))]
 #[derive(Clone, Copy)]
 pub struct TaskStack {

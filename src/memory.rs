@@ -14,12 +14,20 @@ use crate::{
 use spin::{Mutex, Once};
 use uefi::mem::memory_map::{MemoryMap, MemoryType};
 
+/// Kernel ownership of a physical range, derived from the UEFI type.
+///
+/// `Usable` is the only kind the frame allocator will hand out. Reservations
+/// rewrite overlapping usable slices in place instead of dropping neighbors.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MemoryKind {
+    /// Conventional RAM available for the kernel heap and frames.
     Usable,
+    /// Loaded image, heap, stacks, and other kernel-owned RAM.
     Kernel,
+    /// Boot-services memory that is not treated as free RAM after ExitBootServices.
     Firmware,
     Acpi,
+    /// MMIO and similar device windows; paging refuses to map these as cacheable RAM.
     Device,
     Runtime,
     Unusable,
@@ -57,6 +65,7 @@ impl fmt::Display for MemoryKind {
     }
 }
 
+/// One descriptor copied from the firmware map, plus the kernel [`MemoryKind`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MemoryRange {
     start: u64,
@@ -107,6 +116,7 @@ impl MemoryRange {
     }
 }
 
+/// Fixed copy of the firmware map. The UEFI buffer is discarded after this exists.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MemoryMapSnapshot {
     ranges: [MemoryRange; MAX_MEMORY_RANGES],
@@ -296,11 +306,13 @@ impl MemoryMapSnapshot {
     }
 }
 
+/// Failures copying or mutating the owned map. Failed reservations restore the previous table.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MemoryMapError {
     AlreadyInitialized,
     Empty,
     InvalidRange,
+    /// The requested reservation does not overlap any existing descriptor.
     RangeNotFound,
     TooManyRanges,
     NotInitialized,
@@ -339,6 +351,7 @@ pub fn reserve(start: usize, length: usize, kind: MemoryKind) -> Result<(), Memo
     map.lock().reserve_range(start as u64, length as u64, kind)
 }
 
+/// Copy of the owned map for diagnostics. Cheap: the table is a fixed array.
 #[must_use]
 pub fn snapshot() -> Option<MemoryMapSnapshot> {
     MEMORY_MAP.get().map(|map| *map.lock())
@@ -350,6 +363,7 @@ pub fn kind_at(address: u64) -> Option<MemoryKind> {
     snapshot()?.kind_at(address)
 }
 
+/// Byte totals by [`MemoryKind`], used by the `meminfo` command.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct MemorySummary {
     pub ranges: usize,
@@ -364,6 +378,7 @@ pub struct MemorySummary {
 }
 
 impl MemorySummary {
+    /// Prints heap and map totals to the kernel console.
     pub fn meminfo() {
         let start = HEAP_START.load(Ordering::Relaxed);
         let size = HEAP_SIZE.load(Ordering::Relaxed);

@@ -6,6 +6,7 @@
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct TaskContext {
+    /// Stack pointer restored by [`switch`]; layout must match the `asm!` offsets.
     pub stack_pointer: usize,
     pub rbx: usize,
     pub rbp: usize,

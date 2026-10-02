@@ -1,7 +1,13 @@
+//! Primitive drawing on a [`Framebuffer`].
+//!
+//! Out-of-bounds geometry is ignored rather than clipped so a bad caller cannot
+//! wrap coordinates into a different region of the mapping.
+
 use crate::color::Color;
 
 use super::{Framebuffer, PixelCoord, PixelRadius, PixelRows, PixelSize};
 
+/// Fills every visible pixel. No-op if the framebuffer is not drawable.
 pub fn clear_background(fb: &Framebuffer, color: &Color) {
     if !fb.is_drawable() {
         return;
@@ -13,6 +19,7 @@ pub fn clear_background(fb: &Framebuffer, color: &Color) {
     }
 }
 
+/// Axis-aligned filled rectangle. Rejected unless the whole rect fits on screen.
 pub fn draw_rec(fb: &Framebuffer, origin: PixelCoord, size: PixelSize, color: Color) {
     if !fb.is_drawable() {
         return;
@@ -31,6 +38,7 @@ pub fn draw_rec(fb: &Framebuffer, origin: PixelCoord, size: PixelSize, color: Co
     }
 }
 
+/// Filled disk using integer distance-squared tests (no sqrt).
 pub fn draw_circle(fb: &Framebuffer, radius: PixelRadius, center: PixelCoord, color: Color) {
     if !fb.is_drawable() {
         return;
@@ -66,6 +74,7 @@ pub fn draw_circle(fb: &Framebuffer, radius: PixelRadius, center: PixelCoord, co
     }
 }
 
+/// Bresenham line; pixels outside the visible size are skipped.
 pub fn draw_line(fb: &Framebuffer, start: PixelCoord, end: PixelCoord, color: Color) {
     if !fb.is_drawable() {
         return;
@@ -121,6 +130,7 @@ pub fn draw_line(fb: &Framebuffer, start: PixelCoord, end: PixelCoord, color: Co
     }
 }
 
+/// Copies the framebuffer up by `rows` and clears the vacated bottom strip.
 pub fn scroll_up(fb: &Framebuffer, rows: PixelRows) {
     fb.scroll_rows(rows.get());
 }

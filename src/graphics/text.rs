@@ -1,9 +1,15 @@
+//! Bitmap text using `noto-sans-mono-bitmap`.
+//!
+//! Glyphs are blended by intensity against the requested color. Missing glyphs
+//! fall back to `?` in the default font size.
+
 use noto_sans_mono_bitmap::{RasterHeight, RasterizedChar, get_raster};
 
 use crate::{FONT_HEIGHT, FONT_WEIGHT, color::Color};
 
 use super::Framebuffer;
 
+/// Draws `text` at a character-cell origin. Newlines stop the string; they do not wrap.
 pub fn draw_text(
     fb: &Framebuffer,
     text: &str,

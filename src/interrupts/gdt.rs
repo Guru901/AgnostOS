@@ -18,6 +18,7 @@ use crate::globals::gdt::{
     DOUBLE_FAULT_IST_INDEX, IST_STACK_SIZE, MACHINE_CHECK_IST_INDEX, NMI_IST_INDEX,
 };
 
+/// Extra kernel stack used only by one IST slot (NMI, double fault, or machine check).
 #[repr(C, align(16))]
 struct InterruptStack([u8; IST_STACK_SIZE]);
 

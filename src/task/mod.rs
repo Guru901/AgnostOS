@@ -14,6 +14,7 @@ use crate::globals::task::MAX_TASKS;
 use context::TaskContext;
 use stack::TaskStack;
 
+/// Opaque task handle: slot index plus a generation that invalidates reaped IDs until it wraps.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TaskId {
     index: usize,
@@ -27,16 +28,22 @@ impl TaskId {
     }
 }
 
+/// Lifecycle of a spawned slot. [`TaskAction`], [`Scheduler::wake_expired`], and explicit wake/cancel change it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TaskState {
     Ready,
     Running,
-    Sleeping { until: u64 },
+    /// Waiting for the scheduler tick in `until`; [`Scheduler::wake_expired`] resumes it.
+    Sleeping {
+        until: u64,
+    },
+    /// Waiting for [`Scheduler::wake`]; the tick clock does not resume it.
     Blocked,
     Finished,
     Cancelled,
 }
 
+/// Cooperative yield result returned by a [`TaskEntry`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TaskAction {
     /// Return control to the scheduler and remain runnable.
@@ -49,6 +56,8 @@ pub enum TaskAction {
     Exit,
 }
 
+/// Function pointer used as a task body. It must return quickly; the scheduler
+/// is cooperative and does not preempt this function.
 pub type TaskEntry = fn() -> TaskAction;
 
 /// Initial return target for a task context.
@@ -61,6 +70,7 @@ pub(crate) extern "C" fn task_trampoline() -> ! {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SchedulerError {
     NoTaskSlots,
+    /// Index/generation does not match a live slot (including after [`Scheduler::reap`]).
     InvalidTask,
     TaskNotFinished,
 }
@@ -75,12 +85,14 @@ impl fmt::Display for SchedulerError {
     }
 }
 
+/// Occupied scheduler slot: entry point plus the last recorded [`TaskState`].
 #[derive(Clone, Copy)]
 struct Task {
     entry: TaskEntry,
     state: TaskState,
 }
 
+/// Counts of tasks in each [`TaskState`].
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct SchedulerStats {
     pub task_count: usize,
@@ -103,6 +115,7 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
+    /// Empty scheduler with every slot free. Safe to construct as a static.
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -115,7 +128,7 @@ impl Scheduler {
         }
     }
 
-    /// Adds a task in the ready state.
+    /// Adds a task in the ready state. IDs are unique across later [`Self::reap`] of the same slot.
     pub fn spawn(&mut self, entry: TaskEntry) -> Result<TaskId, SchedulerError> {
         let Some((index, slot)) = self
             .tasks
@@ -181,11 +194,10 @@ impl Scheduler {
         Ok(())
     }
 
-    /// Returns the saved CPU context for a task.
+    /// Saved CPU context for a task.
     ///
-    /// Returns the saved CPU context for a task. Its stack frame is prepared
-    /// immediately before the task is executed, after the scheduler's final
-    /// location is known.
+    /// The stack frame is rewritten immediately before the task runs so the
+    /// addresses stay valid if the scheduler value was moved after spawn.
     #[must_use]
     pub fn context(&self, task: TaskId) -> Option<&TaskContext> {
         self.valid_task(task).ok()??;
@@ -212,10 +224,8 @@ impl Scheduler {
 
     /// Runs at most one ready task and returns its identifier.
     ///
-    /// The task is marked running before its entry is called. Its returned
-    /// action is the only supported way to transition it back to ready,
-    /// sleeping, or finished; this keeps task lifetime explicit before real
-    /// register-context ownership is introduced.
+    /// The task is marked running before its entry is called. The returned
+    /// [`TaskAction`] is the only way it leaves Running.
     pub fn run_next(&mut self, now: u64) -> Result<Option<TaskId>, SchedulerError> {
         self.wake_expired(now);
         let Some(index) = self.find_next_ready() else {
@@ -266,6 +276,7 @@ impl Scheduler {
         Ok(dispatched)
     }
 
+    /// Occupancy counters for the live slots.
     #[must_use]
     pub fn stats(&self) -> SchedulerStats {
         let mut stats = SchedulerStats::default();

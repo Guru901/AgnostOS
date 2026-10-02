@@ -1,3 +1,9 @@
+//! Heap region selection after ExitBootServices.
+//!
+//! The kernel copies the UEFI map, reserves the loaded image and current stack,
+//! then takes the largest remaining conventional range as the heap. The global
+//! allocator is installed only after that range is exclusively owned.
+
 #[cfg(feature = "custom-allocator")]
 use core::alloc::{GlobalAlloc, Layout};
 use core::sync::atomic::Ordering;
@@ -26,6 +32,7 @@ pub struct HeapRegion {
     size: usize,
 }
 
+/// Why heap setup or the custom allocator refused to proceed.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum HeapError {
     AlreadyInitialized,

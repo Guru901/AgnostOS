@@ -1,3 +1,5 @@
+//! UEFI GOP mode selection used only while boot services are still available.
+
 use uefi::{
     Status,
     boot::{self, OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol},

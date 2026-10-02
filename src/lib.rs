@@ -1,8 +1,14 @@
+//! AgnostOS kernel.
+//!
+//! This crate is the UEFI kernel: boot hand-off, physical memory, paging,
+//! interrupts, the framebuffer console, and a cooperative scheduler. Host
+//! tests compile the same modules without UEFI boot services; the `uefi-bin`
+//! feature produces the EFI binary.
 #![no_std]
 #![feature(abi_x86_interrupt)]
 extern crate alloc;
 
-/// Module that contains the code for our custom allocator.
+/// Heap selection after `ExitBootServices`, plus the optional custom allocator.
 pub mod allocator;
 
 /// Kernel-owned physical memory map and ownership classifications.
@@ -17,8 +23,10 @@ pub mod paging;
 /// Ordered kernel startup sequence and UEFI hand-off.
 pub mod boot;
 
+/// Shared tunables and boot-time globals (heap bounds, tick counter, layout).
 pub(crate) mod globals;
 pub(crate) use globals::*;
+/// CPU operations with no-op / spin fallbacks so host tests can compile.
 pub(crate) mod platform;
 
 /// Returns whether the UEFI boot-services transition has completed.
@@ -30,23 +38,22 @@ pub fn boot_services_exited() -> bool {
 /// Interrupt controller setup, descriptor tables, and hardware IRQ handlers.
 pub mod interrupts;
 
-/// Module that contains the code for rendering things to the screen after exiting uefi boot
-/// services. It usses framebuffer to write the bytes directly
+/// Direct framebuffer drawing after ExitBootServices (pixels, primitives, text).
 pub mod graphics;
 
-/// Module that contains the code for rendering things to the screen when in uefi. It usses gop.
+/// UEFI GOP mode selection used only while boot services are still available.
 pub mod uefi_graphics;
 
 #[cfg(feature = "uefi-bin")]
 mod uefi_compat;
 
-/// Module that contains the code for printing text to the screen same way println! does
+/// Kernel text console: cursor, history, and `kprintln!` over the framebuffer.
 pub mod console;
 
-/// Module that contains the code for using Colors
+/// RGB color values used by drawing and console output.
 pub mod color;
 
-/// Module that contains the code for handling keyboard.
+/// PS/2 keyboard scancode queue and decoded shell events.
 pub mod keyboard;
 
 #[cfg(feature = "input-smoke")]
@@ -58,14 +65,17 @@ pub(crate) mod fault_smoke;
 #[cfg(feature = "timer-smoke")]
 pub(crate) mod timer_smoke;
 
+/// PIT-backed tick counter and millisecond sleep helpers.
 pub mod timer;
 
+/// PS/2 mouse byte queue, packet decode, and software cursor.
 #[cfg(feature = "mouse")]
 pub mod mouse;
 
-/// Module that contains the code for shell.
+/// Interactive command loop driven by keyboard (and optional mouse) IRQs.
 pub mod shell;
 
+/// Shell command parse-and-dispatch table.
 pub mod commands;
 
 /// Allocation-free cooperative task scheduler.

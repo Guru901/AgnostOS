@@ -6,6 +6,7 @@
 
 use super::pic::LegacyPic;
 
+/// Device IRQs this kernel programs. Vectors are assigned by the PIC implementation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Irq {
     Timer,

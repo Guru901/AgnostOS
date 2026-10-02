@@ -10,10 +10,12 @@ pub use framebuffer::{Framebuffer, FramebufferBytes, FramebufferError};
 pub use pixel::{PixelCoord, PixelRadius, PixelRows, PixelSize, Stride};
 pub use text::draw_text;
 
+/// Glyph advance width in pixels (no extra horizontal padding).
 pub(crate) fn cell_width(size: noto_sans_mono_bitmap::RasterHeight) -> usize {
     noto_sans_mono_bitmap::get_raster_width(crate::FONT_WEIGHT, size)
 }
 
+/// Glyph height plus 2px of line spacing, matching console row pitch.
 pub(crate) fn cell_height(size: noto_sans_mono_bitmap::RasterHeight) -> usize {
     let height = match size {
         noto_sans_mono_bitmap::RasterHeight::Size16 => 16,

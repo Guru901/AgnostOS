@@ -31,9 +31,9 @@ use spin::Mutex;
 struct KWriter {
     /// Internal framebuffer handle used to draw into the active display.
     fb: Framebuffer,
-    /// Current cursor position in.
+    /// Current glyph column (character cells, not pixels).
     column: usize,
-    /// Current cursor position in.
+    /// Current glyph row (character cells, not pixels).
     row: usize,
     /// Screen cells occupied by the glyphs in `current_line`, in draw order.
     /// Keeping these positions lets backspace erase the cell that was actually
@@ -136,6 +136,7 @@ pub(crate) fn emergency_print(args: fmt::Arguments) {
     let _ = fmt::Write::write_fmt(&mut writer, args);
 }
 
+/// Lock-free writer used by fatal exceptions that may interrupt [`KWRITER`].
 struct EmergencyWriter<'a> {
     framebuffer: &'a Framebuffer,
     column: usize,
