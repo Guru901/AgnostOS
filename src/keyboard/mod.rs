@@ -1,3 +1,8 @@
+//! PS/2 keyboard path: IRQ producer, shell consumer, US 104-key decoder.
+//!
+//! Scancodes are queued lock-free. The IRQ handler is the only producer; the
+//! shell loop is the only consumer. Overflow increments [`KEYBOARD_DROPPED`].
+
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use pc_keyboard::{
@@ -10,6 +15,7 @@ use ringbuf::{
 use spin::Mutex;
 use static_cell::StaticCell;
 
+/// One Set-1 scancode byte as delivered by the PS/2 data port.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct KeyboardScancode(u8);
 
@@ -131,6 +137,7 @@ static KEYBOARD: Mutex<PS2Keyboard<layouts::Us104Key, ScancodeSet1>> =
 // access is needed. Revisit if a handler ever reads or writes it.
 static CTRL_HELD: Mutex<bool> = Mutex::new(false);
 
+/// High-level keys the shell understands after layout decoding.
 pub(crate) enum KeyboardEvent {
     Char(char),
     CtrlC,
@@ -144,6 +151,7 @@ pub(crate) enum KeyboardEvent {
     Tab,
 }
 
+/// Pops one scancode, feeds the `pc-keyboard` state machine, and maps it to a [`KeyboardEvent`].
 pub(crate) fn poll() -> Option<KeyboardEvent> {
     // An IRQ can preempt this code. Disable interrupts while holding the queue
     // lock so the handler never spins waiting for the interrupted code to unlock it.

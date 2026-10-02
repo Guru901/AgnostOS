@@ -11,10 +11,12 @@ use crate::memory::{self, MemoryKind, MemoryRange};
 
 const MAX_FREE_RANGES: usize = crate::globals::frame::MAX_MEMORY_RANGES;
 
+/// Physical address of a 4 KiB frame, always page-aligned when constructed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct FrameAddress(u64);
 
 impl FrameAddress {
+    /// Returns `None` when `address` is not 4 KiB aligned.
     #[must_use]
     pub(crate) const fn new(address: u64) -> Option<Self> {
         if address.is_multiple_of(PAGE_SIZE) {
@@ -30,6 +32,10 @@ impl FrameAddress {
     }
 }
 
+/// Why a frame was taken out of the usable free list.
+///
+/// The category is stored on the handle so later subsystems can refuse to
+/// recycle page-table or heap backing into generic kernel allocations.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FrameOwner {
     Heap,
@@ -38,6 +44,7 @@ pub enum FrameOwner {
     Kernel,
 }
 
+/// A single allocated frame plus the owner that must release it.
 #[derive(Debug)]
 pub struct OwnedFrame {
     frame: FrameAddress,
@@ -67,12 +74,14 @@ impl OwnedFrame {
     }
 }
 
+/// Contiguous physical byte range, page-aligned start and length.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PhysicalRange {
     start: u64,
     length: u64,
 }
 
+/// Contiguous frames allocated together, tagged with an owner.
 #[derive(Debug)]
 pub struct OwnedPhysicalRange {
     range: PhysicalRange,
@@ -108,6 +117,7 @@ impl PhysicalRange {
     }
 }
 
+/// One coalesced run of free frames inside the allocator.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct FreeRange {
     start: u64,
@@ -122,6 +132,7 @@ impl FreeRange {
     }
 }
 
+/// Snapshot of free-list size for `meminfo` and tests.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct FrameStats {
     pub total_frames: u64,
@@ -129,15 +140,22 @@ pub struct FrameStats {
     pub free_ranges: usize,
 }
 
+/// Recoverable frame-allocator failures. Failed operations leave the free list unchanged.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FrameError {
     AlreadyInitialized,
     MemoryMapUnavailable,
     OutOfMemory,
+    /// Address is unaligned, not in a managed usable range, or already free.
     InvalidAddress,
+    /// Coalescing would need another free-list slot beyond the fixed range table.
     FreeRangeStorageFull,
 }
 
+/// Fixed-storage first-fit free list built only from `MemoryKind::Usable` ranges.
+///
+/// `managed` is the original usable set and never shrinks; `ranges` is the
+/// current free list. Releases are rejected unless they fall inside `managed`.
 struct FrameAllocator {
     ranges: [FreeRange; MAX_FREE_RANGES],
     range_count: usize,
@@ -373,6 +391,7 @@ pub(crate) fn release(frame: FrameAddress) -> Result<(), FrameError> {
     allocator.lock().release(frame)
 }
 
+/// Current free-list statistics, or `None` before [`initialize`].
 #[must_use]
 pub fn stats() -> Option<FrameStats> {
     FRAME_ALLOCATOR

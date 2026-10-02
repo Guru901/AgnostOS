@@ -13,6 +13,9 @@ use uefi::Status;
 use uefi::{boot, proto::loaded_image::LoadedImage};
 
 /// Initializes the UEFI-facing parts of the kernel and enters the shell.
+///
+/// Order matters: GOP and console first, then ExitBootServices + heap, then
+/// paging, then the IDT. Device IRQs stay masked until [`interrupts::enable_runtime`].
 pub fn initialize() -> Status {
     if let Err(error) = uefi::helpers::init() {
         return error.status();

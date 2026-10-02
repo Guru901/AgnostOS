@@ -1,3 +1,5 @@
+//! RGB color used by framebuffer drawing.
+
 /// Represents an RGB color.
 ///
 /// Each channel uses an 8-bit value in the range `0..=255`.
@@ -21,7 +23,9 @@ impl From<[u8; 3]> for Color {
     }
 }
 
+/// Default glyph color on a black background.
 pub const WHITE: Color = Color::new(255, 255, 255);
+/// Console default background and erase color.
 pub const BLACK: Color = Color::new(0, 0, 0);
 
 impl Color {

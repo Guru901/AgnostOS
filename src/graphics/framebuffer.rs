@@ -1,3 +1,8 @@
+//! Framebuffer descriptor wrapping a GOP mapping.
+//!
+//! Pixel writes are volatile so the compiler cannot elide stores to MMIO-like
+//! display memory. Only RGB and BGR 32-bit formats are treated as drawable.
+
 use uefi::proto::console::gop::{GraphicsOutput, PixelFormat};
 
 use crate::color::Color;
@@ -20,6 +25,11 @@ impl FramebufferBytes {
     }
 }
 
+/// Linear framebuffer mapping and the geometry GOP reported for it.
+///
+/// `ptr` is never exposed; drawing goes through `write_pixel` / `read_pixel`.
+/// The type is `Copy` because it is a descriptor, not exclusive ownership of
+/// the bytes — the console keeps a second copy for panic/exception output.
 #[derive(Debug, Clone, Copy)]
 pub struct Framebuffer {
     ptr: *mut u8,
@@ -29,6 +39,7 @@ pub struct Framebuffer {
     byte_len: FramebufferBytes,
 }
 
+/// Why a GOP mode or test slice could not become a drawable framebuffer.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum FramebufferError {
     UnsupportedPixelFormat(PixelFormat),
@@ -115,6 +126,7 @@ impl Framebuffer {
         self.size
     }
 
+    /// Hardware stride in pixels, which may be larger than the visible width.
     #[must_use]
     pub const fn row_stride(&self) -> Stride {
         self.stride

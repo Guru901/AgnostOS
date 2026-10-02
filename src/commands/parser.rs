@@ -1,6 +1,7 @@
 use crate::globals::command::COMMAND_NAMES;
 use alloc::vec::Vec;
 
+/// Built-in command names. `Empty` is a blank line; `Unknown` is not in the table.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum Command {
     Help,
@@ -34,12 +35,14 @@ pub(crate) fn complete_command(prefix: &str) -> Option<&'static str> {
     matches.next().is_none().then_some(command)
 }
 
+/// One parsed line: verb, positional args, and dash-prefixed flags.
 pub(crate) struct ParsedCommand<'a> {
     pub(crate) command: Command,
     pub(crate) args: Vec<&'a str>,
     pub(crate) flags: Vec<&'a str>,
 }
 
+/// Splits `input` on whitespace and classifies the first token as a [`Command`].
 pub(crate) fn parse(input: &str) -> ParsedCommand<'_> {
     let mut tokens = input.split_whitespace();
     let command = match tokens.next().unwrap_or("") {

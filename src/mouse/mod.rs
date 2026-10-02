@@ -1,3 +1,8 @@
+//! PS/2 mouse path: IRQ byte queue, 3-byte packet decode, and software cursor.
+//!
+//! Packet assembly lives in the shell poll path, not the IRQ, so a dropped
+//! byte can resync on bit 3 of the next header instead of wedging the handler.
+
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::{
@@ -23,6 +28,7 @@ struct MouseCursor {
     saved_under: [Color; MOUSE_CURSOR_PIXELS],
 }
 
+/// One raw byte from the mouse IRQ. Three bytes make a movement packet.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct MouseByte(u8);
 
@@ -190,6 +196,7 @@ pub(crate) fn mouse_queue_is_empty() -> bool {
     }
 }
 
+/// Accumulators for the current incomplete 3-byte PS/2 packet.
 struct PacketState {
     bytes: [u8; 3],
     index: usize,
@@ -200,6 +207,7 @@ static PACKET_STATE: Mutex<PacketState> = Mutex::new(PacketState {
     index: 0,
 });
 
+/// Signed pointer motion in screen pixels after Y-axis inversion.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) struct MouseDelta(i16);
 
@@ -215,6 +223,7 @@ impl MouseDelta {
     }
 }
 
+/// Decoded packet. Buttons are stored but the shell does not act on them yet.
 #[allow(dead_code)] // Button state is decoded now; shell actions will consume it later.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct MouseEvent {
@@ -343,6 +352,7 @@ const CMD_WRITE_TO_AUX: u8 = 0xd4;
 const MOUSE_ENABLE_PACKETS: u8 = 0xf4;
 const MOUSE_ACK: u8 = 0xfa;
 
+/// Controller handshake failures while enabling the auxiliary (mouse) device.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum Ps2Error {
     Timeout,

@@ -1,3 +1,5 @@
+//! Pixel geometry newtypes so width, stride, and coordinates are not mixed.
+
 /// A pixel position in a framebuffer.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct PixelCoord {

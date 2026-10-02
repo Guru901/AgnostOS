@@ -1,3 +1,8 @@
+//! Shell command parse-and-dispatch.
+//!
+//! Tokenization is whitespace-only: tokens starting with `-` are flags, the
+//! rest are positional arguments. Unrecognized names become [`parser::Command::Unknown`].
+
 mod help;
 mod parser;
 mod shutdown;
@@ -39,6 +44,7 @@ pub(crate) fn run_command(command: &str) {
     }
 }
 
+/// Forwards Tab completion to the parser (unique prefix only).
 pub(crate) fn complete_command(prefix: &str) -> Option<&'static str> {
     parser::complete_command(prefix)
 }

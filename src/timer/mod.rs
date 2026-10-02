@@ -1,13 +1,20 @@
+//! PIT-backed uptime and sleep.
+//!
+//! Ticks come from the timer IRQ. Host tests use the same conversion so
+//! `ticks_for_ms` stays consistent with the programmed divisor.
+
 use alloc::{format, string::String};
 
 use crate::globals::timer::{PIT_DIVISOR, PIT_FREQUENCY};
 use crate::{TICKS, platform};
 use core::{hint::spin_loop, sync::atomic::Ordering};
 
+/// PIT IRQs observed since kernel init.
 pub(crate) fn ticks() -> u64 {
     TICKS.load(Ordering::Relaxed)
 }
 
+/// Milliseconds since PIT programming, using integer PIT frequency / divisor.
 pub fn uptime_ms() -> u64 {
     ticks().saturating_mul(PIT_DIVISOR).saturating_mul(1_000) / PIT_FREQUENCY
 }
@@ -43,6 +50,7 @@ pub fn sleep_block(ms: u64) {
     }
 }
 
+/// Halts until `ms` of PIT ticks elapse. Requires interrupts to be enabled.
 pub fn sleep_ms(ms: u64) {
     if !platform::interrupts_enabled() {
         #[cfg(target_arch = "x86_64")]
@@ -58,10 +66,12 @@ pub fn sleep_ms(ms: u64) {
     }
 }
 
+/// Tick deadline `ms` from now. Compare with [`expired`].
 pub fn deadline_ms(ms: u64) -> u64 {
     ticks().saturating_add(ticks_for_ms(ms))
 }
 
+/// Whether `deadline` (from [`deadline_ms`]) has been reached.
 pub fn expired(deadline: u64) -> bool {
     ticks() >= deadline
 }

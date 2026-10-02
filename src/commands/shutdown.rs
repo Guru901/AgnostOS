@@ -1,5 +1,6 @@
 use crate::platform;
 
+/// QEMU isa-debug-exit status written to port `0xf4`.
 #[derive(Clone, Copy)]
 pub(crate) struct QemuExitCode(u32);
 
@@ -7,6 +8,7 @@ impl QemuExitCode {
     pub(crate) const SUCCESS: Self = Self(0);
 }
 
+/// Writes the QEMU isa-debug-exit code and then halts.
 pub(crate) fn exit_qemu(code: QemuExitCode) -> ! {
     // SAFETY: port `0xf4` is the QEMU isa-debug-exit device configured for this
     // kernel. Calling this on other hardware can have device-specific effects.
