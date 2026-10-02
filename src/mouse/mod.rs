@@ -1,7 +1,7 @@
 //! PS/2 mouse path: IRQ byte queue, 3-byte packet decode, and software cursor.
 //!
 //! Packet assembly lives in the shell poll path, not the IRQ, so a dropped
-//! byte can resync on bit 3 of the next header instead of wedging the handler.
+//! invalid bytes are discarded only while the parser expects a packet header.
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 
