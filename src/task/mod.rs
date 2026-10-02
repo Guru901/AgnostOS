@@ -34,7 +34,9 @@ pub enum TaskState {
     Ready,
     Running,
     /// Waiting for the scheduler tick in `until`; [`Scheduler::wake_expired`] resumes it.
-    Sleeping { until: u64 },
+    Sleeping {
+        until: u64,
+    },
     /// Waiting for [`Scheduler::wake`]; the tick clock does not resume it.
     Blocked,
     Finished,

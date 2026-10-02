@@ -378,7 +378,7 @@ pub struct MemorySummary {
 }
 
 impl MemorySummary {
-/// Prints heap and map totals to the kernel console.
+    /// Prints heap and map totals to the kernel console.
     pub fn meminfo() {
         let start = HEAP_START.load(Ordering::Relaxed);
         let size = HEAP_SIZE.load(Ordering::Relaxed);
