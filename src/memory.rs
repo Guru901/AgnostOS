@@ -6,7 +6,11 @@
 
 use core::{fmt, sync::atomic::Ordering};
 
-use crate::globals::frame::{MAX_MEMORY_RANGES, PAGE_SIZE};
+use crate::{
+    HEAP_SIZE, HEAP_START,
+    globals::frame::{MAX_MEMORY_RANGES, PAGE_SIZE},
+    kprintln,
+};
 use spin::{Mutex, Once};
 use uefi::mem::memory_map::{MemoryMap, MemoryType};
 
@@ -365,7 +369,7 @@ impl MemorySummary {
         let size = HEAP_SIZE.load(Ordering::Relaxed);
         kprintln!("heap start: {:#x}", start);
         kprintln!("heap size:  {}mb", size / (1024 * 1024));
-        if let Some(snapshot) = memory::snapshot() {
+        if let Some(snapshot) = crate::memory::snapshot() {
             let summary = snapshot.summary();
             kprintln!("memory ranges: {}", summary.ranges);
             kprintln!("usable:        {}mb", summary.usable_bytes / (1024 * 1024));
@@ -388,7 +392,7 @@ impl MemorySummary {
                 "unusable:       {}mb",
                 summary.unusable_bytes / (1024 * 1024)
             );
-            if let Some(frames) = frame::stats() {
+            if let Some(frames) = crate::frame::stats() {
                 kprintln!("frames total:   {}", frames.total_frames);
                 kprintln!("frames free:    {}", frames.free_frames);
                 kprintln!("frame ranges:   {}", frames.free_ranges);
