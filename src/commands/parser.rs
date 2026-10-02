@@ -1,8 +1,5 @@
+use crate::globals::command::COMMAND_NAMES;
 use alloc::vec::Vec;
-
-const COMMAND_NAMES: &[&str] = &[
-    "about", "clear", "echo", "font", "help", "history", "meminfo", "shutdown", "uptime",
-];
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum Command {

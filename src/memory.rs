@@ -6,11 +6,9 @@
 
 use core::fmt;
 
+use crate::globals::frame::{MAX_MEMORY_RANGES, PAGE_SIZE};
 use spin::{Mutex, Once};
 use uefi::mem::memory_map::{MemoryMap, MemoryType};
-
-pub const MAX_MEMORY_RANGES: usize = 256;
-const PAGE_SIZE: u64 = 4096;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MemoryKind {

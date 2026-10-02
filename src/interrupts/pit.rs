@@ -1,9 +1,8 @@
 //! Programmable interval timer configuration.
 
 use super::outb;
+use crate::globals::timer::{PIT_FREQUENCY, TIMER_FREQUENCY};
 
-pub(crate) const PIT_FREQUENCY: u32 = 1_193_182;
-pub(crate) const TIMER_FREQUENCY: u32 = 1_000;
 const COMMAND_PORT: u16 = 0x43;
 const CHANNEL_0_PORT: u16 = 0x40;
 const CHANNEL_0_MODE_3: u8 = 0x36;
@@ -26,6 +25,6 @@ pub(super) unsafe fn initialize() {
 
 /// Returns the programmed PIT divisor used by the kernel timer.
 #[must_use]
-pub(crate) const fn divisor() -> u16 {
+pub(super) const fn divisor() -> u16 {
     (PIT_FREQUENCY / TIMER_FREQUENCY) as u16
 }

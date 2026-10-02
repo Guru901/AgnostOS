@@ -10,10 +10,9 @@ use core::fmt;
 pub mod context;
 pub mod stack;
 
+use crate::globals::task::MAX_TASKS;
 use context::TaskContext;
 use stack::TaskStack;
-
-pub const MAX_TASKS: usize = 64;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TaskId {

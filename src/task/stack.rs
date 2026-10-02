@@ -3,8 +3,8 @@
 // Keep the first fixed-storage scheduler bounded enough for static/kernel
 // construction. This is a bootstrap stack size; larger workloads should move
 // stack storage to the physical-frame allocator.
-pub const TASK_STACK_SIZE: usize = 4 * 1024;
-const STACK_FRAME_WORDS: usize = 7;
+
+use crate::globals::task::{STACK_FRAME_WORDS, TASK_STACK_SIZE};
 
 #[repr(align(16))]
 #[derive(Clone, Copy)]
@@ -64,7 +64,8 @@ impl Default for TaskStack {
 
 #[cfg(test)]
 mod tests {
-    use super::{TASK_STACK_SIZE, TaskStack};
+    use super::TaskStack;
+    use crate::globals::task::TASK_STACK_SIZE;
 
     #[test]
     fn stack_is_aligned_and_has_expected_capacity() {

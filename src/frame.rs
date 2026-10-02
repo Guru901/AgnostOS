@@ -6,10 +6,10 @@
 
 use spin::{Mutex, Once};
 
+use crate::globals::frame::PAGE_SIZE;
 use crate::memory::{self, MemoryKind, MemoryRange};
 
-const PAGE_SIZE: u64 = 4096;
-const MAX_FREE_RANGES: usize = memory::MAX_MEMORY_RANGES;
+const MAX_FREE_RANGES: usize = crate::globals::frame::MAX_MEMORY_RANGES;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct FrameAddress(u64);
