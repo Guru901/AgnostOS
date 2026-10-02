@@ -14,7 +14,7 @@ use crate::globals::task::MAX_TASKS;
 use context::TaskContext;
 use stack::TaskStack;
 
-/// Opaque task handle: slot index plus a generation that invalidates reaped IDs.
+/// Opaque task handle: slot index plus a generation that invalidates reaped IDs until it wraps.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TaskId {
     index: usize,
