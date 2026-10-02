@@ -17,19 +17,12 @@ use x86_64::{
     },
 };
 
-use crate::{frame, memory};
+use crate::globals::paging::{
+    FRAMEBUFFER_BASE, HEAP_BASE, HIGH_CANONICAL_MIN, KERNEL_BASE, LOW_CANONICAL_MAX,
+    MAX_PAGE_TABLE_FRAMES, MMIO_BASE, RECURSIVE_INDEX, STACK_BASE,
+};
 
-pub const PAGE_SIZE: u64 = 4096;
-pub const KERNEL_BASE: u64 = 0xffff_8000_0000_0000;
-pub const HEAP_BASE: u64 = 0xffff_9000_0000_0000;
-pub const FRAMEBUFFER_BASE: u64 = 0xffff_a000_0000_0000;
-pub const MMIO_BASE: u64 = 0xffff_b000_0000_0000;
-pub const STACK_BASE: u64 = 0xffff_c000_0000_0000;
-
-const LOW_CANONICAL_MAX: u64 = 0x0000_7fff_ffff_ffff;
-const HIGH_CANONICAL_MIN: u64 = 0xffff_8000_0000_0000;
-const MAX_PAGE_TABLE_FRAMES: usize = 512;
-const RECURSIVE_INDEX: u16 = 510;
+use crate::{frame, globals::frame::PAGE_SIZE, memory};
 
 #[repr(align(4096))]
 struct PageTableStorage(PageTable);

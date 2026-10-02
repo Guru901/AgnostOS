@@ -1,17 +1,8 @@
 use alloc::{format, string::String};
 
+use crate::globals::timer::{PIT_DIVISOR, PIT_FREQUENCY};
 use crate::{TICKS, platform};
 use core::{hint::spin_loop, sync::atomic::Ordering};
-
-#[cfg(target_arch = "x86_64")]
-const PIT_FREQUENCY: u64 = crate::interrupts::PIT_FREQUENCY as u64;
-#[cfg(target_arch = "x86_64")]
-const PIT_DIVISOR: u64 = crate::interrupts::pit_divisor() as u64;
-
-#[cfg(not(target_arch = "x86_64"))]
-const PIT_FREQUENCY: u64 = 1_000;
-#[cfg(not(target_arch = "x86_64"))]
-const PIT_DIVISOR: u64 = 1_000;
 
 pub(crate) fn ticks() -> u64 {
     TICKS.load(Ordering::Relaxed)

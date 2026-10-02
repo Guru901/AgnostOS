@@ -5,8 +5,10 @@ use x86_64::structures::idt::InterruptDescriptorTable;
 
 use super::{
     controller::{self, Irq},
-    gdt, handlers,
+    handlers,
 };
+
+use crate::globals::gdt;
 
 static IDT: Once<InterruptDescriptorTable> = Once::new();
 

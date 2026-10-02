@@ -14,11 +14,9 @@ use x86_64::{
     },
 };
 
-pub(super) const NMI_IST_INDEX: u16 = 0;
-pub(super) const DOUBLE_FAULT_IST_INDEX: u16 = 1;
-pub(super) const MACHINE_CHECK_IST_INDEX: u16 = 2;
-
-const IST_STACK_SIZE: usize = 32 * 1024;
+use crate::globals::gdt::{
+    DOUBLE_FAULT_IST_INDEX, IST_STACK_SIZE, MACHINE_CHECK_IST_INDEX, NMI_IST_INDEX,
+};
 
 #[repr(C, align(16))]
 struct InterruptStack([u8; IST_STACK_SIZE]);

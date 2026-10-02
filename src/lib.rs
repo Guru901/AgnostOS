@@ -17,8 +17,8 @@ pub mod paging;
 /// Ordered kernel startup sequence and UEFI hand-off.
 pub mod boot;
 
-pub(crate) mod constants;
-pub(crate) use constants::*;
+pub(crate) mod globals;
+pub(crate) use globals::*;
 pub(crate) mod platform;
 
 /// Returns whether the UEFI boot-services transition has completed.
