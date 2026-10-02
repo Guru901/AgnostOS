@@ -49,8 +49,9 @@ pub(crate) mod frame {
 
 /// Higher-half virtual windows used by bootstrap paging.
 ///
-/// Each region is a 1 TiB slice so identity-mapped physical ranges can be
-/// relocated later without colliding. Addresses sit in the canonical high half.
+/// Each region is a 1 TiB slice, and adjacent window bases are spaced 16 TiB
+/// apart so identity-mapped physical ranges can be relocated without colliding.
+/// Addresses sit in the canonical high half.
 pub(crate) mod paging {
     pub(crate) const KERNEL_BASE: u64 = 0xffff_8000_0000_0000;
     pub(crate) const HEAP_BASE: u64 = 0xffff_9000_0000_0000;
