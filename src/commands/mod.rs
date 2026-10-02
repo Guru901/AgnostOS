@@ -1,7 +1,8 @@
 //! Shell command parse-and-dispatch.
 //!
-//! Tokenization is whitespace-only: tokens starting with `-` are flags, the
-//! rest are positional arguments. Unrecognized names become [`parser::Command::Unknown`].
+//! Tokenization is whitespace-only. After the command token, tokens starting
+//! with `-` are flags; the rest are positional arguments. Unrecognized names become
+//! [`parser::Command::Unknown`].
 
 mod help;
 mod parser;
