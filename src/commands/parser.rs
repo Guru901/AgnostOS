@@ -9,6 +9,7 @@ pub(crate) enum Command {
     History,
     Echo,
     Meminfo,
+    Taskinfo,
     Font,
     Clear,
     Shutdown,
@@ -51,6 +52,7 @@ pub(crate) fn parse(input: &str) -> ParsedCommand<'_> {
         "history" => Command::History,
         "echo" => Command::Echo,
         "meminfo" => Command::Meminfo,
+        "taskinfo" => Command::Taskinfo,
         "font" => Command::Font,
         "clear" => Command::Clear,
         "shutdown" => Command::Shutdown,
@@ -95,8 +97,17 @@ mod tests {
     }
 
     #[test]
+    fn parser_recognizes_taskinfo() {
+        let parsed = parse("taskinfo");
+        assert_eq!(parsed.command, Command::Taskinfo);
+        assert!(parsed.args.is_empty());
+        assert!(parsed.flags.is_empty());
+    }
+
+    #[test]
     fn autocomplete_returns_the_single_matching_command() {
         assert_eq!(complete_command("upt"), Some("uptime"));
+        assert_eq!(complete_command("task"), Some("taskinfo"));
     }
 
     #[test]

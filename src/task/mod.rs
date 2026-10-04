@@ -10,7 +10,7 @@ use core::fmt;
 pub mod context;
 pub mod stack;
 
-use crate::globals::task::MAX_TASKS;
+use crate::{globals::task::MAX_TASKS, kprintln};
 use context::TaskContext;
 use spin::Mutex;
 use stack::TaskStack;
@@ -115,6 +115,20 @@ pub struct SchedulerStats {
     pub running: usize,
     pub finished: usize,
     pub cancelled: usize,
+}
+
+impl SchedulerStats {
+    /// Prints live scheduler occupancy to the kernel console.
+    pub fn taskinfo() {
+        let stats = with_scheduler(|scheduler| scheduler.stats());
+        kprintln!("task slots:  {} / {}", stats.task_count, MAX_TASKS);
+        kprintln!("ready:       {}", stats.ready);
+        kprintln!("sleeping:    {}", stats.sleeping);
+        kprintln!("blocked:     {}", stats.blocked);
+        kprintln!("running:     {}", stats.running);
+        kprintln!("finished:    {}", stats.finished);
+        kprintln!("cancelled:   {}", stats.cancelled);
+    }
 }
 
 /// A bounded, allocation-free cooperative scheduler.

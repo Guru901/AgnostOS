@@ -8,7 +8,7 @@ mod help;
 mod parser;
 mod shutdown;
 
-use crate::{commands::help::help, console, kprintln, memory, timer};
+use crate::{commands::help::help, console, kprintln, memory, task, timer};
 use noto_sans_mono_bitmap::RasterHeight;
 use parser::{Command, parse};
 
@@ -30,6 +30,7 @@ pub(crate) fn run_command(command: &str) {
         Command::History => console::print_history(),
         Command::Echo => kprintln!("{}", args.join(" ")),
         Command::Meminfo => memory::MemorySummary::meminfo(),
+        Command::Taskinfo => task::SchedulerStats::taskinfo(),
         Command::Font => match args.first().copied().unwrap_or("") {
             "16" => console::set_font_size(RasterHeight::Size16),
             "20" => console::set_font_size(RasterHeight::Size20),
