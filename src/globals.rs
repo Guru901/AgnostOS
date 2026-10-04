@@ -36,7 +36,8 @@ pub(crate) static CURSOR_H: usize = 20;
 /// Names Tab-complete is allowed to match. Keep in sync with [`crate::commands`].
 pub(crate) mod command {
     pub(crate) const COMMAND_NAMES: &[&str] = &[
-        "about", "clear", "echo", "font", "help", "history", "meminfo", "shutdown", "uptime",
+        "about", "clear", "echo", "font", "help", "history", "meminfo", "shutdown", "taskinfo",
+        "uptime",
     ];
 }
 
