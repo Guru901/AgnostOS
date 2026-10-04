@@ -24,42 +24,6 @@ building substantial storage or user-program support.
 
 ## Required kernel foundations
 
-### 1. Preserve the memory map
-
-- [x] Copy or transform the memory map returned by `exit_boot_services` into
-  kernel-owned data before discarding it.
-- [x] Classify usable, reserved, firmware, kernel, framebuffer, and ACPI
-  ranges.
-- [x] Reserve the kernel image, boot data, page tables, stacks, and devices.
-- [x] Expose memory-map diagnostics from a safe kernel API.
-
-The kernel now copies the map into a fixed static table before initializing the
-heap. It classifies UEFI ranges, records the framebuffer as device memory, and
-splits descriptors when reserving ranges. A fixed-storage frame allocator now
-allocates and releases frames only from ranges still classified as usable, and
-the heap obtains its contiguous backing range from that allocator. The paging
-foundation defines canonical higher-half regions, reserves the loaded image,
-heap, stack window, framebuffer, and every page-table frame, builds checked
-identity mappings, and activates the owned level-4 table in CR3. Higher-half
-relocation, guard pages, and dynamic out-of-memory recovery remain future work.
-
-### 2. Add physical and virtual memory management
-
-- [x] Implement a fixed-storage 4 KiB physical-frame allocator with allocation
-  and release.
-- [x] Define the x86_64 virtual-address layout and its ownership rules.
-- [x] Create page-table mapping/unmapping primitives with checked alignment and
-  permission flags.
-- [x] Deliberately map the kernel, heap, framebuffer, stacks, and boot data.
-- [ ] Add demand-mapped MMIO/device ranges with cache-policy validation.
-- [ ] Add guard pages and a controlled out-of-memory path.
-- [x] Put the heap on top of the page/frame allocator instead of permanently
-  owning one arbitrary conventional-memory range.
-
-This is the most important missing boundary: without paging, the kernel has no
-strong separation between valid memory, device memory, and accidental pointer
-accesses.
-
 ### 3. Complete CPU exception handling
 
 - [ ] Add handlers for page fault, general protection, invalid opcode, divide
@@ -72,28 +36,6 @@ accesses.
 
 Do not unmask additional device IRQs until their IDT entry, acknowledgement,
 shared-state rules, and failure behaviour are defined.
-
-### 4. Make interrupts and time dependable
-
-- [ ] Add a timer source and calibrate its tick-to-time conversion.
-- [ ] Make `uptime` report real units; currently the timer API treats ticks as
-  milliseconds.
-- [ ] Implement an idle path using `hlt` without a check-then-sleep race.
-- [ ] Track interrupt nesting and document which locks/operations are legal in
-  interrupt context.
-- [ ] Replace or formally verify the mutex-backed interrupt queues and expose
-  overflow diagnostics.
-- [ ] Introduce an interrupt-controller abstraction before adding APIC/IOAPIC
-  support.
-
-### 5. Add execution units
-
-- [ ] Define kernel task/thread structures, states, stacks, and lifetimes.
-- [ ] Implement cooperative tasks first and test context ownership.
-- [ ] Add a scheduler and timer-driven preemption only after context switching
-  and cleanup are correct.
-- [ ] Decide whether the first scheduler is single-core only and document the
-  later SMP requirements.
 
 ### 6. Add a driver and I/O boundary
 
