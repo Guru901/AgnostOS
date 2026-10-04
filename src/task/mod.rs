@@ -12,7 +12,20 @@ pub mod stack;
 
 use crate::globals::task::MAX_TASKS;
 use context::TaskContext;
+use spin::Mutex;
 use stack::TaskStack;
+
+/// Kernel scheduler storage. Lives in `.bss` because the embedded task stacks
+/// are far larger than the bootstrap stack window mapped in [`crate::paging`].
+static SCHEDULER: Mutex<Scheduler> = Mutex::new(Scheduler::new());
+
+/// Runs `f` with exclusive access to the kernel scheduler.
+pub fn with_scheduler<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut Scheduler) -> R,
+{
+    f(&mut SCHEDULER.lock())
+}
 
 /// Opaque task handle: slot index plus a generation that invalidates reaped IDs until it wraps.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
