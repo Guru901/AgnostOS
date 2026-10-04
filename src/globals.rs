@@ -84,6 +84,7 @@ pub(crate) mod task {
     /// Callee-saved registers plus the trampoline return address.
     pub(crate) const STACK_FRAME_WORDS: usize = 7;
     pub(crate) const MAX_TASKS: usize = 64;
+    pub(crate) const TASK_BUDGET: usize = 8;
 }
 
 /// PIT channel 0 is programmed for ~1 kHz; conversion uses the integer divisor.

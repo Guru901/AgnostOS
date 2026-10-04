@@ -17,6 +17,7 @@ use crate::{
     console,
     keyboard::{self, KEYBOARD_DROPPED, KeyboardEvent},
     kprint, kprintln,
+    task::TaskAction,
     timer::ticks,
 };
 
@@ -25,6 +26,28 @@ use crate::mouse::MOUSE_DROPPED;
 
 #[cfg(feature = "mouse")]
 use crate::graphics::PixelCoord;
+use core::sync::atomic::AtomicUsize;
+
+static TASK_ONE_COUNT: AtomicUsize = AtomicUsize::new(1);
+static TASK_TWO_COUNT: AtomicUsize = AtomicUsize::new(1);
+
+fn task_one() -> TaskAction {
+    let shi = TASK_ONE_COUNT.fetch_add(1, Ordering::Relaxed);
+    if shi >= 10 {
+        return TaskAction::Exit;
+    }
+    kprintln!("Task 1 ran: #{shi}");
+    TaskAction::Yield
+}
+
+fn task_two() -> TaskAction {
+    let shi = TASK_TWO_COUNT.fetch_add(1, Ordering::Relaxed);
+    if shi >= 10 {
+        return TaskAction::Exit;
+    }
+    kprintln!("Task 2 ran: #{shi}");
+    TaskAction::Yield
+}
 
 /// Initializes and runs the interactive shell. Never returns (`-> !`).
 ///
@@ -40,6 +63,15 @@ use crate::graphics::PixelCoord;
 /// - Ctrl+Plus/Minus zoom the font in/out.
 pub fn init() -> ! {
     console::clear_background();
+
+    crate::task::with_scheduler(|scheduler| {
+        scheduler.spawn(task_one).unwrap();
+        scheduler.spawn(task_two).unwrap();
+        if let Err(error) = scheduler.run_ready(crate::timer::ticks(), 10) {
+            kprintln!("{error}");
+        }
+    });
+
     let mut line = String::new();
     #[cfg(feature = "mouse")]
     let mut mouse_x: i32 = 0;
@@ -70,8 +102,16 @@ pub fn init() -> ! {
             }
         }
 
-        // Just for now.. edit it later
-        if ticks().is_multiple_of(100) {
+        let now = ticks();
+
+        crate::task::with_scheduler(|scheduler| {
+            if let Err(e) = scheduler.run_ready(now, crate::globals::task::TASK_BUDGET) {
+                // just for now.. make it better later.
+                kprintln!("{e}");
+            }
+        });
+
+        if now.is_multiple_of(100) {
             let keyboard_dropped = KEYBOARD_DROPPED.swap(0, Ordering::Relaxed);
 
             if keyboard_dropped > 0 {

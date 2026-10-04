@@ -8,6 +8,7 @@
 use crate::kprintln;
 #[cfg(not(feature = "fault-smoke"))]
 use crate::shell;
+use crate::task::TaskAction;
 use crate::{allocator, console, graphics::Framebuffer, interrupts, paging, uefi_graphics};
 use uefi::Status;
 use uefi::{boot, proto::loaded_image::LoadedImage};
