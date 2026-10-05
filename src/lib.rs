@@ -8,6 +8,9 @@
 #![feature(abi_x86_interrupt)]
 extern crate alloc;
 
+#[cfg(test)]
+extern crate std;
+
 /// Heap selection after `ExitBootServices`, plus the optional custom allocator.
 pub mod allocator;
 
