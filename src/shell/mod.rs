@@ -67,10 +67,10 @@ pub fn init() -> ! {
     crate::task::with_scheduler(|scheduler| {
         scheduler.spawn(task_one).unwrap();
         scheduler.spawn(task_two).unwrap();
-        if let Err(error) = scheduler.run_ready(crate::timer::ticks(), 10) {
-            kprintln!("{error}");
-        }
     });
+    if let Err(error) = crate::task::run_ready(crate::timer::ticks(), 10) {
+        kprintln!("{error}");
+    }
 
     let mut line = String::new();
     #[cfg(feature = "mouse")]
@@ -104,12 +104,9 @@ pub fn init() -> ! {
 
         let now = ticks();
 
-        crate::task::with_scheduler(|scheduler| {
-            if let Err(e) = scheduler.run_ready(now, crate::globals::task::TASK_BUDGET) {
-                // just for now.. make it better later.
-                kprintln!("{e}");
-            }
-        });
+        if let Err(e) = crate::task::run_ready(now, crate::globals::task::TASK_BUDGET) {
+            kprintln!("{e}");
+        }
 
         if now.is_multiple_of(100) {
             let keyboard_dropped = KEYBOARD_DROPPED.swap(0, Ordering::Relaxed);
