@@ -16,9 +16,11 @@ h1{font-size:22px;line-height:1.2;margin:0 0 5px;letter-spacing:-.02em}
 .hint{color:var(--muted)}button,input{font:inherit}button{cursor:pointer}
 .reset{border:1px solid #cfd4dc;background:#fff;color:var(--ink);border-radius:7px;padding:7px 11px;font-weight:600}
 .reset:hover{background:#f8fafc;border-color:#98a2b3}
-.chart-wrap{width:100%;overflow-x:auto;border:1px solid #edf0f2;border-radius:8px;background:#fff}
-svg{display:block;width:100%;height:auto;min-width:680px;overflow:hidden;vertical-align:top}
-.frame{cursor:pointer}.frame:focus rect,.frame:hover rect{stroke:#20242c;stroke-width:1.5}.frame:focus{outline:none}
+.chart-wrap{width:100%;overflow:hidden;border:1px solid #edf0f2;border-radius:8px;background:#fff}
+.chart{position:relative;width:100%;height:120px;background:#fff}
+.frame{position:absolute;box-sizing:border-box;appearance:none;-webkit-appearance:none;margin:0;padding:0 6px;border:1px solid #fff;border-radius:2px;color:var(--ink);font:11px/22px ui-monospace,SFMono-Regular,Consolas,monospace;text-align:left;overflow:hidden;white-space:nowrap;cursor:pointer}
+.frame:hover,.frame:focus{outline:1.5px solid #20242c;outline-offset:-1.5px;z-index:1}
+.frame-label{display:block;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
 #details{min-height:42px;margin-top:12px;padding:10px 12px;border-radius:7px;background:#f8fafc;color:#344054;overflow-wrap:anywhere}
 .functions{margin-top:16px;overflow:hidden}.functions-head{padding:16px 18px 12px;border-bottom:1px solid var(--line)}
 .functions-head h2{font-size:16px;margin:0 0 10px}
@@ -30,57 +32,87 @@ svg{display:block;width:100%;height:auto;min-width:680px;overflow:hidden;vertica
 #frame-index button:hover,#frame-index button:focus{background:#fff8eb;outline:none}
 .function-name{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}
 .function-count{flex:none;color:var(--muted);font-size:12px}
+.narrow-calls{margin-top:16px;overflow:hidden}.narrow-head{padding:14px 18px;border-bottom:1px solid var(--line)}
+.narrow-head h2{font-size:15px;margin:0 0 3px}.narrow-head p{margin:0;color:var(--muted)}
+.narrow-calls ul{list-style:none;padding:0;margin:0;max-height:240px;overflow:auto}
+.narrow-calls li+li{border-top:1px solid #f0f1f3}
+.narrow-calls button{display:flex;width:100%;align-items:center;gap:10px;text-align:left;border:0;background:#fff;padding:9px 18px;color:var(--ink)}
+.narrow-calls button:hover,.narrow-calls button:focus{background:#fff8eb;outline:none}
+.narrow-swatch{width:12px;height:12px;flex:none;border:1px solid #0002;border-radius:3px}
 #empty-state{padding:14px 18px;color:var(--muted)}
 @media(max-width:640px){main{padding:18px 12px 32px}header{display:block}.sample-count{display:inline-block;margin-top:12px}.chart-card{padding:10px}.toolbar{align-items:flex-start;flex-direction:column}.function-count{font-size:11px}}
 </style></head>
 <body><main>
 <header><div><h1>AgnostOS flame graph</h1><p class="subtitle">Sampled call stacks · select a frame to inspect its callees</p></div>
-<div class="sample-count">597 samples</div></header>
+<div class="sample-count">794 samples</div></header>
 <section class="card chart-card" aria-label="Flame graph">
 <div class="toolbar"><span class="hint" id="zoom-hint">Showing the full profile</span><button class="reset" id="reset-zoom" type="button">Reset view</button></div>
-<div class="chart-wrap"><svg viewBox="0 0 1400 132" role="img" aria-label="Sampled call stack flame graph"><defs><clipPath id="frame-clip-1"><rect x="0.00" y="110" width="1399.00" height="20"/></clipPath><clipPath id="frame-clip-2"><rect x="0.00" y="88" width="1399.00" height="20"/></clipPath><clipPath id="frame-clip-3"><rect x="0.00" y="66" width="6.04" height="20"/></clipPath><clipPath id="frame-clip-4"><rect x="0.00" y="44" width="6.04" height="20"/></clipPath><clipPath id="frame-clip-5"><rect x="0.00" y="22" width="6.04" height="20"/></clipPath><clipPath id="frame-clip-6"><rect x="7.04" y="66" width="1.35" height="20"/></clipPath><clipPath id="frame-clip-7"><rect x="7.04" y="44" width="1.35" height="20"/></clipPath><clipPath id="frame-clip-8"><rect x="9.38" y="66" width="8.38" height="20"/></clipPath><clipPath id="frame-clip-9"><rect x="9.38" y="44" width="8.38" height="20"/></clipPath><clipPath id="frame-clip-10"><rect x="9.38" y="22" width="8.38" height="20"/></clipPath><clipPath id="frame-clip-11"><rect x="18.76" y="66" width="10.73" height="20"/></clipPath><clipPath id="frame-clip-12"><rect x="18.76" y="44" width="10.73" height="20"/></clipPath><clipPath id="frame-clip-13"><rect x="18.76" y="22" width="10.73" height="20"/></clipPath></defs><g class="frame" id="frame-1" data-clip="frame-clip-1" data-path="0" data-x="0.00" data-y="110" data-width="1400.00" data-label-width="177.00"><title>agnostos::boot::initialize — 597 samples</title><rect x="0.00" y="110" width="1399.00" height="20" fill="#f2c14e" stroke="#fff" stroke-width="0.6"/><text clip-path="url(#frame-clip-1)" x="4.00" y="124" font-size="11" pointer-events="none" style="display:">agnostos::boot::initialize</text></g><g class="frame" id="frame-2" data-clip="frame-clip-2" data-path="0.0" data-x="0.00" data-y="88" data-width="1400.00" data-label-width="144.50"><title>agnostos::shell::init — 597 samples</title><rect x="0.00" y="88" width="1399.00" height="20" fill="#f4a261" stroke="#fff" stroke-width="0.6"/><text clip-path="url(#frame-clip-2)" x="4.00" y="102" font-size="11" pointer-events="none" style="display:">agnostos::shell::init</text></g><g class="frame" id="frame-3" data-clip="frame-clip-3" data-path="0.0.0" data-x="0.00" data-y="66" data-width="7.04" data-label-width="203.00"><title>agnostos::commands::help::help — 3 samples</title><rect x="0.00" y="66" width="6.04" height="20" fill="#c44569" stroke="#fff" stroke-width="0.6"/><text clip-path="url(#frame-clip-3)" x="4.00" y="80" font-size="11" pointer-events="none" style="display:none">agnostos::commands::help::help</text></g><g class="frame" id="frame-4" data-clip="frame-clip-4" data-path="0.0.0.0" data-x="0.00" data-y="44" data-width="7.04" data-label-width="242.00"><title>agnostos::console::impl$3::write_str — 3 samples</title><rect x="0.00" y="44" width="6.04" height="20" fill="#e85d75" stroke="#fff" stroke-width="0.6"/><text clip-path="url(#frame-clip-4)" x="4.00" y="58" font-size="11" pointer-events="none" style="display:none">agnostos::console::impl$3::write_str</text></g><g class="frame" id="frame-5" data-clip="frame-clip-5" data-path="0.0.0.0.0" data-x="0.00" data-y="22" data-width="7.04" data-label-width="268.00"><title>compiler_builtins::mem::memmove::memmove — 3 samples</title><rect x="0.00" y="22" width="6.04" height="20" fill="#f78154" stroke="#fff" stroke-width="0.6"/><text clip-path="url(#frame-clip-5)" x="4.00" y="36" font-size="11" pointer-events="none" style="display:none">compiler_builtins::mem::memmove::memmove</text></g><g class="frame" id="frame-6" data-clip="frame-clip-6" data-path="0.0.1" data-x="7.04" data-y="66" data-width="2.35" data-label-width="242.00"><title>agnostos::console::impl$3::write_str — 1 samples</title><rect x="7.04" y="66" width="1.35" height="20" fill="#c44569" stroke="#fff" stroke-width="0.6"/><text clip-path="url(#frame-clip-6)" x="11.04" y="80" font-size="11" pointer-events="none" style="display:none">agnostos::console::impl$3::write_str</text></g><g class="frame" id="frame-7" data-clip="frame-clip-7" data-path="0.0.1.0" data-x="7.04" data-y="44" data-width="2.35" data-label-width="268.00"><title>compiler_builtins::mem::memmove::memmove — 1 samples</title><rect x="7.04" y="44" width="1.35" height="20" fill="#e85d75" stroke="#fff" stroke-width="0.6"/><text clip-path="url(#frame-clip-7)" x="11.04" y="58" font-size="11" pointer-events="none" style="display:none">compiler_builtins::mem::memmove::memmove</text></g><g class="frame" id="frame-8" data-clip="frame-clip-8" data-path="0.0.2" data-x="9.38" data-y="66" data-width="9.38" data-label-width="203.00"><title>agnostos::console::insert_char — 4 samples</title><rect x="9.38" y="66" width="8.38" height="20" fill="#c44569" stroke="#fff" stroke-width="0.6"/><text clip-path="url(#frame-clip-8)" x="13.38" y="80" font-size="11" pointer-events="none" style="display:none">agnostos::console::insert_char</text></g><g class="frame" id="frame-9" data-clip="frame-clip-9" data-path="0.0.2.0" data-x="9.38" data-y="44" data-width="9.38" data-label-width="242.00"><title>agnostos::console::redraw_input_line — 4 samples</title><rect x="9.38" y="44" width="8.38" height="20" fill="#e85d75" stroke="#fff" stroke-width="0.6"/><text clip-path="url(#frame-clip-9)" x="13.38" y="58" font-size="11" pointer-events="none" style="display:none">agnostos::console::redraw_input_line</text></g><g class="frame" id="frame-10" data-clip="frame-clip-10" data-path="0.0.2.0.0" data-x="9.38" data-y="22" data-width="9.38" data-label-width="248.50"><title>agnostos::graphics::drawing::draw_rec — 4 samples</title><rect x="9.38" y="22" width="8.38" height="20" fill="#f78154" stroke="#fff" stroke-width="0.6"/><text clip-path="url(#frame-clip-10)" x="13.38" y="36" font-size="11" pointer-events="none" style="display:none">agnostos::graphics::drawing::draw_rec</text></g><g class="frame" id="frame-11" data-clip="frame-clip-11" data-path="0.0.3" data-x="18.76" data-y="66" data-width="11.73" data-label-width="268.00"><title>agnostos::memory::MemorySummary::meminfo — 5 samples</title><rect x="18.76" y="66" width="10.73" height="20" fill="#c44569" stroke="#fff" stroke-width="0.6"/><text clip-path="url(#frame-clip-11)" x="22.76" y="80" font-size="11" pointer-events="none" style="display:none">agnostos::memory::MemorySummary::meminfo</text></g><g class="frame" id="frame-12" data-clip="frame-clip-12" data-path="0.0.3.0" data-x="18.76" data-y="44" data-width="11.73" data-label-width="242.00"><title>agnostos::console::impl$3::write_str — 5 samples</title><rect x="18.76" y="44" width="10.73" height="20" fill="#e85d75" stroke="#fff" stroke-width="0.6"/><text clip-path="url(#frame-clip-12)" x="22.76" y="58" font-size="11" pointer-events="none" style="display:none">agnostos::console::impl$3::write_str</text></g><g class="frame" id="frame-13" data-clip="frame-clip-13" data-path="0.0.3.0.0" data-x="18.76" data-y="22" data-width="11.73" data-label-width="268.00"><title>compiler_builtins::mem::memmove::memmove — 5 samples</title><rect x="18.76" y="22" width="10.73" height="20" fill="#f78154" stroke="#fff" stroke-width="0.6"/><text clip-path="url(#frame-clip-13)" x="22.76" y="36" font-size="11" pointer-events="none" style="display:none">compiler_builtins::mem::memmove::memmove</text></g></svg></div>
+<div class="chart-wrap"><div class="chart" role="img" aria-label="Sampled call stack flame graph"><button type="button" class="frame" id="frame-1" data-path="0" data-x="0.00000000" data-width="1.00000000" data-samples="794" data-label-width="194" style="left:0.0000%;width:100.0000%;top:96px;height:22px;background:#f4a261" title="agnostos::boot::initialize — 794 samples"><span class="frame-label">agnostos::boot::initialize</span></button><button type="button" class="frame" id="frame-2" data-path="0.0" data-x="0.00000000" data-width="1.00000000" data-samples="794" data-label-width="159" style="left:0.0000%;width:100.0000%;top:72px;height:22px;background:#c44569" title="agnostos::shell::init — 794 samples"><span class="frame-label">agnostos::shell::init</span></button><button type="button" class="frame" id="frame-3" data-path="0.0.0" data-x="0.00000000" data-width="0.00125945" data-samples="1" data-label-width="229" style="left:0.0000%;width:0.1259%;top:48px;height:22px;background:#e85d75" title="agnostos::commands::run_command — 1 samples"><span class="frame-label">agnostos::commands::run_command</span></button><button type="button" class="frame" id="frame-4" data-path="0.0.0.0" data-x="0.00000000" data-width="0.00125945" data-samples="1" data-label-width="327" style="left:0.0000%;width:0.1259%;top:24px;height:22px;background:#f78154" title="agnostos::graphics::drawing::clear_background — 1 samples"><span class="frame-label">agnostos::graphics::drawing::clear_background</span></button><button type="button" class="frame" id="frame-5" data-path="0.0.1" data-x="0.00125945" data-width="0.00377834" data-samples="3" data-label-width="222" style="left:0.1259%;width:0.3778%;top:48px;height:22px;background:#e85d75" title="agnostos::console::insert_char — 3 samples"><span class="frame-label">agnostos::console::insert_char</span></button><button type="button" class="frame" id="frame-6" data-path="0.0.1.0" data-x="0.00125945" data-width="0.00377834" data-samples="3" data-label-width="264" style="left:0.1259%;width:0.3778%;top:24px;height:22px;background:#f78154" title="agnostos::console::redraw_input_line — 3 samples"><span class="frame-label">agnostos::console::redraw_input_line</span></button><button type="button" class="frame" id="frame-7" data-path="0.0.1.0.0" data-x="0.00125945" data-width="0.00377834" data-samples="3" data-label-width="271" style="left:0.1259%;width:0.3778%;top:0px;height:22px;background:#f2c14e" title="agnostos::graphics::drawing::draw_rec — 3 samples"><span class="frame-label">agnostos::graphics::drawing::draw_rec</span></button><button type="button" class="frame" id="frame-8" data-path="0.0.2" data-x="0.00503778" data-width="0.00125945" data-samples="1" data-label-width="348" style="left:0.5038%;width:0.1259%;top:48px;height:22px;background:#e85d75" title="pc_keyboard::layouts::us104::impl$0::map_keycode — 1 samples"><span class="frame-label">pc_keyboard::layouts::us104::impl$0::map_keycode</span></button></div></div>
 <div id="details" aria-live="polite">Hover over a frame for its function and sample count. Click to zoom.</div>
 </section>
+<section class="card narrow-calls" aria-label="Frames too narrow for labels">
+<div class="narrow-head"><h2>Too narrow to label</h2><p>These frames are tiny because they have few samples. Select a function to zoom in.</p></div>
+<ul><li><button type="button" data-target="frame-5"><span class="narrow-swatch" style="background:#e85d75"></span><span class="function-name">agnostos::console::insert_char</span><span class="function-count">3 samples · zoom</span></button></li><li><button type="button" data-target="frame-6"><span class="narrow-swatch" style="background:#f78154"></span><span class="function-name">agnostos::console::redraw_input_line</span><span class="function-count">3 samples · zoom</span></button></li><li><button type="button" data-target="frame-7"><span class="narrow-swatch" style="background:#f2c14e"></span><span class="function-name">agnostos::graphics::drawing::draw_rec</span><span class="function-count">3 samples · zoom</span></button></li><li><button type="button" data-target="frame-3"><span class="narrow-swatch" style="background:#e85d75"></span><span class="function-name">agnostos::commands::run_command</span><span class="function-count">1 samples · zoom</span></button></li><li><button type="button" data-target="frame-4"><span class="narrow-swatch" style="background:#f78154"></span><span class="function-name">agnostos::graphics::drawing::clear_background</span><span class="function-count">1 samples · zoom</span></button></li><li><button type="button" data-target="frame-8"><span class="narrow-swatch" style="background:#e85d75"></span><span class="function-name">pc_keyboard::layouts::us104::impl$0::map_keycode</span><span class="function-count">1 samples · zoom</span></button></li></ul>
+</section>
 <section class="card functions" aria-label="Functions in profile">
-<div class="functions-head"><h2>Functions <span class="hint">(13)</span></h2>
+<div class="functions-head"><h2>Functions <span class="hint">(8)</span></h2>
 <input id="frame-filter" type="search" placeholder="Search functions" aria-label="Search functions"></div>
-<ul id="frame-index"><li><button type="button" data-target="frame-1"><span class="function-name">agnostos::boot::initialize</span><span class="function-count">597 samples · 100.0%</span></button></li><li><button type="button" data-target="frame-2"><span class="function-name">agnostos::shell::init</span><span class="function-count">597 samples · 100.0%</span></button></li><li><button type="button" data-target="frame-12"><span class="function-name">agnostos::console::impl$3::write_str</span><span class="function-count">5 samples · 0.8%</span></button></li><li><button type="button" data-target="frame-11"><span class="function-name">agnostos::memory::MemorySummary::meminfo</span><span class="function-count">5 samples · 0.8%</span></button></li><li><button type="button" data-target="frame-13"><span class="function-name">compiler_builtins::mem::memmove::memmove</span><span class="function-count">5 samples · 0.8%</span></button></li><li><button type="button" data-target="frame-8"><span class="function-name">agnostos::console::insert_char</span><span class="function-count">4 samples · 0.7%</span></button></li><li><button type="button" data-target="frame-9"><span class="function-name">agnostos::console::redraw_input_line</span><span class="function-count">4 samples · 0.7%</span></button></li><li><button type="button" data-target="frame-10"><span class="function-name">agnostos::graphics::drawing::draw_rec</span><span class="function-count">4 samples · 0.7%</span></button></li><li><button type="button" data-target="frame-3"><span class="function-name">agnostos::commands::help::help</span><span class="function-count">3 samples · 0.5%</span></button></li><li><button type="button" data-target="frame-4"><span class="function-name">agnostos::console::impl$3::write_str</span><span class="function-count">3 samples · 0.5%</span></button></li><li><button type="button" data-target="frame-5"><span class="function-name">compiler_builtins::mem::memmove::memmove</span><span class="function-count">3 samples · 0.5%</span></button></li><li><button type="button" data-target="frame-6"><span class="function-name">agnostos::console::impl$3::write_str</span><span class="function-count">1 samples · 0.2%</span></button></li><li><button type="button" data-target="frame-7"><span class="function-name">compiler_builtins::mem::memmove::memmove</span><span class="function-count">1 samples · 0.2%</span></button></li></ul><div id="empty-state" hidden>No matching functions.</div>
+<ul id="frame-index"><li><button type="button" data-target="frame-1"><span class="function-name">agnostos::boot::initialize</span><span class="function-count">794 samples · 100.0%</span></button></li><li><button type="button" data-target="frame-2"><span class="function-name">agnostos::shell::init</span><span class="function-count">794 samples · 100.0%</span></button></li><li><button type="button" data-target="frame-5"><span class="function-name">agnostos::console::insert_char</span><span class="function-count">3 samples · 0.4%</span></button></li><li><button type="button" data-target="frame-6"><span class="function-name">agnostos::console::redraw_input_line</span><span class="function-count">3 samples · 0.4%</span></button></li><li><button type="button" data-target="frame-7"><span class="function-name">agnostos::graphics::drawing::draw_rec</span><span class="function-count">3 samples · 0.4%</span></button></li><li><button type="button" data-target="frame-3"><span class="function-name">agnostos::commands::run_command</span><span class="function-count">1 samples · 0.1%</span></button></li><li><button type="button" data-target="frame-4"><span class="function-name">agnostos::graphics::drawing::clear_background</span><span class="function-count">1 samples · 0.1%</span></button></li><li><button type="button" data-target="frame-8"><span class="function-name">pc_keyboard::layouts::us104::impl$0::map_keycode</span><span class="function-count">1 samples · 0.1%</span></button></li></ul><div id="empty-state" hidden>No matching functions.</div>
 </section></main>
 <script>
 const frames=[...document.querySelectorAll('.frame')];
 const details=document.getElementById('details');
 const zoomHint=document.getElementById('zoom-hint');
-function showDetails(frame){details.textContent=frame.querySelector('title').textContent;}
+const chart=document.querySelector('.chart');
+function showDetails(frame){details.textContent=frame.getAttribute('title');}
+function place(item,x,w){
+  item.style.left=(x*100)+'%';
+  item.style.width=(w*100)+'%';
+  const label=item.querySelector('.frame-label');
+  if(label)label.style.visibility=(w*chart.clientWidth>=140)?'visible':'hidden';
+}
 function zoom(frame){
-  const path=frame.dataset.path, x=Number(frame.dataset.x), width=Number(frame.dataset.width);
-  if(width<=0)return;
+  const path=frame.dataset.path;
   for(const item of frames){
     const visible=item.dataset.path===path||item.dataset.path.startsWith(path+'.');
     item.style.display=visible?'':'none';
-    if(!visible)continue;
-    const scale=1400/width, newX=(Number(item.dataset.x)-x)*scale, newW=Number(item.dataset.width)*scale;
-    const rect=item.querySelector('rect'), text=item.querySelector('text');
-    rect.setAttribute('x',newX);rect.setAttribute('width',Math.max(newW-1,0));
-    if(text){text.setAttribute('x',newX+4);text.style.display=newW>=Number(item.dataset.labelWidth)?'':'none';}
-    const clip=document.getElementById(item.dataset.clip).firstElementChild;
-    clip.setAttribute('x',newX);clip.setAttribute('width',Math.max(newW-1,0));
   }
+  function layoutBranch(parent,x,width){
+    place(parent,x,width);
+    const prefix=parent.dataset.path+'.';
+    const children=frames.filter(item=>item.dataset.path.startsWith(prefix)&&
+      !item.dataset.path.slice(prefix.length).includes('.'))
+      .sort((a,b)=>Number(a.dataset.x)-Number(b.dataset.x));
+    const childSamples=children.reduce((sum,item)=>sum+Number(item.dataset.samples),0);
+    if(childSamples===0)return;
+    let cursor=x;
+    for(const child of children){
+      const childWidth=width*Number(child.dataset.samples)/childSamples;
+      layoutBranch(child,cursor,childWidth);
+      cursor+=childWidth;
+    }
+  }
+  layoutBranch(frame,0,1);
   showDetails(frame);
-  zoomHint.textContent='Zoomed into '+frame.querySelector('title').textContent;
+  zoomHint.textContent='Expanded callees under '+frame.getAttribute('title')+' · self time excluded';
 }
 function reset(){for(const item of frames){
-  item.style.display='';const rect=item.querySelector('rect'),text=item.querySelector('text');
-  rect.setAttribute('x',item.dataset.x);rect.setAttribute('width',Math.max(Number(item.dataset.width)-1,0));
-  if(text){text.setAttribute('x',Number(item.dataset.x)+4);text.style.display=Number(item.dataset.width)>=Number(item.dataset.labelWidth)?'':'none';}
-  const clip=document.getElementById(item.dataset.clip).firstElementChild;
-  clip.setAttribute('x',item.dataset.x);clip.setAttribute('width',Math.max(Number(item.dataset.width)-1,0));
+  item.style.display='';
+  place(item,Number(item.dataset.x),Number(item.dataset.width));
 }}
 frames.forEach(item=>{
-  item.setAttribute('tabindex','0');
   item.addEventListener('click',()=>zoom(item));
   item.addEventListener('mouseenter',()=>showDetails(item));
   item.addEventListener('focus',()=>showDetails(item));
-  item.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();zoom(item);}});
+});
+reset();
+addEventListener('resize',()=>{
+  for(const item of frames){
+    if(item.style.display==='none')continue;
+    const width=item.getBoundingClientRect().width;
+    const label=item.querySelector('.frame-label');
+    if(label)label.style.visibility=(width>=140)?'visible':'hidden';
+  }
 });
 document.getElementById('reset-zoom').addEventListener('click',reset);
 document.getElementById('reset-zoom').addEventListener('click',()=>{
@@ -88,6 +120,9 @@ document.getElementById('reset-zoom').addEventListener('click',()=>{
   details.textContent='Hover over a frame for its function and sample count. Click to zoom.';
 });
 document.querySelectorAll('#frame-index button').forEach(button=>button.addEventListener('click',()=>{
+  const frame=document.getElementById(button.dataset.target);zoom(frame);frame.scrollIntoView({block:'center'});
+}));
+document.querySelectorAll('.narrow-calls button').forEach(button=>button.addEventListener('click',()=>{
   const frame=document.getElementById(button.dataset.target);zoom(frame);frame.scrollIntoView({block:'center'});
 }));
 document.getElementById('frame-filter').addEventListener('input',event=>{

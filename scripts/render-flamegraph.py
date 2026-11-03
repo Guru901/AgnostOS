@@ -91,9 +91,9 @@ def add_stack(root, names):
 
 
 def render(root, output):
-    width = 1400
-    row_height = 22
-    max_depth = 1
+    row_height = 24
+    frame_height = 22
+    max_depth = 0
 
     def depth(node, current=0):
         nonlocal max_depth
@@ -102,13 +102,13 @@ def render(root, output):
             depth(child, current + 1)
 
     depth(root)
-    # Keep the viewBox tight to the frames. Extra vertical padding here made
-    # shallow profiles look like the chart had been pushed to the bottom.
-    height = (max_depth + 1) * row_height
+    # Root is depth 0 and is not drawn; each descendant level is one row.
+    rows = max(max_depth, 1)
+    height = rows * row_height
     colors = ("#f2c14e", "#f78154", "#e85d75", "#c44569", "#f4a261")
     rects = []
-    clips = []
     frame_index = []
+    narrow_index = []
     clip_id = 0
     total = max(root["samples"], 1)
 
@@ -116,29 +116,22 @@ def render(root, output):
         nonlocal clip_id
         if label is not None:
             clip_id += 1
-            this_clip = f"frame-clip-{clip_id}"
             this_frame = f"frame-{clip_id}"
             color = colors[(y // row_height) % len(colors)]
             shown = html.escape(label, quote=False)
-            clips.append(
-                f'<clipPath id="{this_clip}"><rect x="{x:.2f}" y="{y}" '
-                f'width="{max(w - 1, 0):.2f}" height="20"/></clipPath>'
-            )
             frame_index.append((this_frame, label, node["samples"]))
-            # SVG clipping kept labels inside tiny frames, but left unreadable
-            # fragments. Hide labels until their full name fits the frame.
-            label_width = len(label) * 6.5 + 8
-            text = (f'<text clip-path="url(#{this_clip})" x="{x + 4:.2f}" y="{y + 14}" '
-                    f'font-size="11" pointer-events="none" '
-                    f'style="display:{"" if w >= label_width else "none"}">{shown}</text>')
+            # Hide labels until the full name fits the live pixel width.
+            label_width = len(label) * 7 + 12
+            title = html.escape(f"{label} — {node['samples']} samples")
+            if w * 1400 < label_width:
+                narrow_index.append((this_frame, label, node["samples"], color))
             rects.append(
-                f'<g class="frame" id="{this_frame}" data-clip="{this_clip}" data-path="{path}" '
-                f'data-x="{x:.2f}" data-y="{y}" data-width="{w:.2f}" '
-                f'data-label-width="{label_width:.2f}">'
-                f'<title>{html.escape(label)} — {node["samples"]} samples</title>'
-                f'<rect x="{x:.2f}" y="{y}" width="{max(w - 1, 0):.2f}" height="20" '
-                f'fill="{color}" stroke="#fff" stroke-width="0.6"/>'
-                f'{text}</g>'
+                f'<button type="button" class="frame" id="{this_frame}" data-path="{path}" '
+                f'data-x="{x:.8f}" data-width="{w:.8f}" data-samples="{node["samples"]}" '
+                f'data-label-width="{label_width}" '
+                f'style="left:{x * 100:.4f}%;width:{w * 100:.4f}%;top:{y}px;'
+                f'height:{frame_height}px;background:{color}" title="{title}">'
+                f'<span class="frame-label">{shown}</span></button>'
             )
         cursor = x
         for child_index, (child_name, child) in enumerate(sorted(node["children"].items())):
@@ -147,9 +140,9 @@ def render(root, output):
             draw(child, cursor, y - row_height, child_width, child_name, child_path)
             cursor += child_width
 
-    # Flame graphs place root frames at the bottom and callers above them.
+    # Flame graphs place root frames at the bottom and callees above them.
     for root_index, (name, node) in enumerate(sorted(root["children"].items())):
-        draw(node, 0, height - row_height, width * node["samples"] / total, name, str(root_index))
+        draw(node, 0, height - row_height, node["samples"] / total, name, str(root_index))
 
     index_items = "".join(
         f'<li><button type="button" data-target="{frame_id}">'
@@ -157,6 +150,14 @@ def render(root, output):
         f'<span class="function-count">{count} samples · {count * 100 / total:.1f}%</span>'
         f'</button></li>'
         for frame_id, name, count in sorted(frame_index, key=lambda item: (-item[2], item[1]))
+    )
+    narrow_items = "".join(
+        f'<li><button type="button" data-target="{frame_id}">'
+        f'<span class="narrow-swatch" style="background:{color}"></span>'
+        f'<span class="function-name">{html.escape(name)}</span>'
+        f'<span class="function-count">{count} samples · zoom</span>'
+        f'</button></li>'
+        for frame_id, name, count, color in sorted(narrow_index, key=lambda item: (-item[2], item[1]))
     )
 
     document = f'''<!doctype html>
@@ -177,9 +178,11 @@ h1{{font-size:22px;line-height:1.2;margin:0 0 5px;letter-spacing:-.02em}}
 .hint{{color:var(--muted)}}button,input{{font:inherit}}button{{cursor:pointer}}
 .reset{{border:1px solid #cfd4dc;background:#fff;color:var(--ink);border-radius:7px;padding:7px 11px;font-weight:600}}
 .reset:hover{{background:#f8fafc;border-color:#98a2b3}}
-.chart-wrap{{width:100%;overflow-x:auto;border:1px solid #edf0f2;border-radius:8px;background:#fff}}
-svg{{display:block;width:100%;height:auto;min-width:680px;overflow:hidden;vertical-align:top}}
-.frame{{cursor:pointer}}.frame:focus rect,.frame:hover rect{{stroke:#20242c;stroke-width:1.5}}.frame:focus{{outline:none}}
+.chart-wrap{{width:100%;overflow:hidden;border:1px solid #edf0f2;border-radius:8px;background:#fff}}
+.chart{{position:relative;width:100%;height:{height}px;background:#fff}}
+.frame{{position:absolute;box-sizing:border-box;appearance:none;-webkit-appearance:none;margin:0;padding:0 6px;border:1px solid #fff;border-radius:2px;color:var(--ink);font:11px/{frame_height}px ui-monospace,SFMono-Regular,Consolas,monospace;text-align:left;overflow:hidden;white-space:nowrap;cursor:pointer}}
+.frame:hover,.frame:focus{{outline:1.5px solid #20242c;outline-offset:-1.5px;z-index:1}}
+.frame-label{{display:block;overflow:hidden;text-overflow:ellipsis;pointer-events:none}}
 #details{{min-height:42px;margin-top:12px;padding:10px 12px;border-radius:7px;background:#f8fafc;color:#344054;overflow-wrap:anywhere}}
 .functions{{margin-top:16px;overflow:hidden}}.functions-head{{padding:16px 18px 12px;border-bottom:1px solid var(--line)}}
 .functions-head h2{{font-size:16px;margin:0 0 10px}}
@@ -191,6 +194,13 @@ svg{{display:block;width:100%;height:auto;min-width:680px;overflow:hidden;vertic
 #frame-index button:hover,#frame-index button:focus{{background:#fff8eb;outline:none}}
 .function-name{{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}}
 .function-count{{flex:none;color:var(--muted);font-size:12px}}
+.narrow-calls{{margin-top:16px;overflow:hidden}}.narrow-head{{padding:14px 18px;border-bottom:1px solid var(--line)}}
+.narrow-head h2{{font-size:15px;margin:0 0 3px}}.narrow-head p{{margin:0;color:var(--muted)}}
+.narrow-calls ul{{list-style:none;padding:0;margin:0;max-height:240px;overflow:auto}}
+.narrow-calls li+li{{border-top:1px solid #f0f1f3}}
+.narrow-calls button{{display:flex;width:100%;align-items:center;gap:10px;text-align:left;border:0;background:#fff;padding:9px 18px;color:var(--ink)}}
+.narrow-calls button:hover,.narrow-calls button:focus{{background:#fff8eb;outline:none}}
+.narrow-swatch{{width:12px;height:12px;flex:none;border:1px solid #0002;border-radius:3px}}
 #empty-state{{padding:14px 18px;color:var(--muted)}}
 @media(max-width:640px){{main{{padding:18px 12px 32px}}header{{display:block}}.sample-count{{display:inline-block;margin-top:12px}}.chart-card{{padding:10px}}.toolbar{{align-items:flex-start;flex-direction:column}}.function-count{{font-size:11px}}}}
 </style></head>
@@ -199,8 +209,12 @@ svg{{display:block;width:100%;height:auto;min-width:680px;overflow:hidden;vertic
 <div class="sample-count">{total:,} samples</div></header>
 <section class="card chart-card" aria-label="Flame graph">
 <div class="toolbar"><span class="hint" id="zoom-hint">Showing the full profile</span><button class="reset" id="reset-zoom" type="button">Reset view</button></div>
-<div class="chart-wrap"><svg viewBox="0 0 {width} {height}" role="img" aria-label="Sampled call stack flame graph"><defs>{''.join(clips)}</defs>{''.join(rects)}</svg></div>
+<div class="chart-wrap"><div class="chart" role="img" aria-label="Sampled call stack flame graph">{''.join(rects)}</div></div>
 <div id="details" aria-live="polite">Hover over a frame for its function and sample count. Click to zoom.</div>
+</section>
+<section class="card narrow-calls" aria-label="Frames too narrow for labels">
+<div class="narrow-head"><h2>Too narrow to label</h2><p>These frames are tiny because they have few samples. Select a function to zoom in.</p></div>
+<ul>{narrow_items}</ul>
 </section>
 <section class="card functions" aria-label="Functions in profile">
 <div class="functions-head"><h2>Functions <span class="hint">({len({name for _, name, _ in frame_index})})</span></h2>
@@ -211,37 +225,59 @@ svg{{display:block;width:100%;height:auto;min-width:680px;overflow:hidden;vertic
 const frames=[...document.querySelectorAll('.frame')];
 const details=document.getElementById('details');
 const zoomHint=document.getElementById('zoom-hint');
-function showDetails(frame){{details.textContent=frame.querySelector('title').textContent;}}
+const chart=document.querySelector('.chart');
+function showDetails(frame){{details.textContent=frame.getAttribute('title');}}
+function place(item,x,w){{
+  item.style.left=(x*100)+'%';
+  item.style.width=(w*100)+'%';
+  const label=item.querySelector('.frame-label');
+  if(label)label.style.visibility=(w*chart.clientWidth>=140)?'visible':'hidden';
+}}
 function zoom(frame){{
-  const path=frame.dataset.path, x=Number(frame.dataset.x), width=Number(frame.dataset.width);
-  if(width<=0)return;
+  const path=frame.dataset.path;
   for(const item of frames){{
     const visible=item.dataset.path===path||item.dataset.path.startsWith(path+'.');
     item.style.display=visible?'':'none';
-    if(!visible)continue;
-    const scale={width}/width, newX=(Number(item.dataset.x)-x)*scale, newW=Number(item.dataset.width)*scale;
-    const rect=item.querySelector('rect'), text=item.querySelector('text');
-    rect.setAttribute('x',newX);rect.setAttribute('width',Math.max(newW-1,0));
-    if(text){{text.setAttribute('x',newX+4);text.style.display=newW>=Number(item.dataset.labelWidth)?'':'none';}}
-    const clip=document.getElementById(item.dataset.clip).firstElementChild;
-    clip.setAttribute('x',newX);clip.setAttribute('width',Math.max(newW-1,0));
   }}
+  // A zoomed view answers “what called this function?” / “what does it call?”
+  // without letting the selected function's self samples leave its callees
+  // compressed into a few pixels. Rebase each sibling set to fill its parent.
+  function layoutBranch(parent,x,width){{
+    place(parent,x,width);
+    const prefix=parent.dataset.path+'.';
+    const children=frames.filter(item=>item.dataset.path.startsWith(prefix)&&
+      !item.dataset.path.slice(prefix.length).includes('.'))
+      .sort((a,b)=>Number(a.dataset.x)-Number(b.dataset.x));
+    const childSamples=children.reduce((sum,item)=>sum+Number(item.dataset.samples),0);
+    if(childSamples===0)return;
+    let cursor=x;
+    for(const child of children){{
+      const childWidth=width*Number(child.dataset.samples)/childSamples;
+      layoutBranch(child,cursor,childWidth);
+      cursor+=childWidth;
+    }}
+  }}
+  layoutBranch(frame,0,1);
   showDetails(frame);
-  zoomHint.textContent='Zoomed into '+frame.querySelector('title').textContent;
+  zoomHint.textContent='Expanded callees under '+frame.getAttribute('title')+' · self time excluded';
 }}
 function reset(){{for(const item of frames){{
-  item.style.display='';const rect=item.querySelector('rect'),text=item.querySelector('text');
-  rect.setAttribute('x',item.dataset.x);rect.setAttribute('width',Math.max(Number(item.dataset.width)-1,0));
-  if(text){{text.setAttribute('x',Number(item.dataset.x)+4);text.style.display=Number(item.dataset.width)>=Number(item.dataset.labelWidth)?'':'none';}}
-  const clip=document.getElementById(item.dataset.clip).firstElementChild;
-  clip.setAttribute('x',item.dataset.x);clip.setAttribute('width',Math.max(Number(item.dataset.width)-1,0));
+  item.style.display='';
+  place(item,Number(item.dataset.x),Number(item.dataset.width));
 }}}}
 frames.forEach(item=>{{
-  item.setAttribute('tabindex','0');
   item.addEventListener('click',()=>zoom(item));
   item.addEventListener('mouseenter',()=>showDetails(item));
   item.addEventListener('focus',()=>showDetails(item));
-  item.addEventListener('keydown',event=>{{if(event.key==='Enter'||event.key===' '){{event.preventDefault();zoom(item);}}}});
+}});
+reset();
+addEventListener('resize',()=>{{
+  for(const item of frames){{
+    if(item.style.display==='none')continue;
+    const width=item.getBoundingClientRect().width;
+    const label=item.querySelector('.frame-label');
+    if(label)label.style.visibility=(width>=140)?'visible':'hidden';
+  }}
 }});
 document.getElementById('reset-zoom').addEventListener('click',reset);
 document.getElementById('reset-zoom').addEventListener('click',()=>{{
@@ -249,6 +285,9 @@ document.getElementById('reset-zoom').addEventListener('click',()=>{{
   details.textContent='Hover over a frame for its function and sample count. Click to zoom.';
 }});
 document.querySelectorAll('#frame-index button').forEach(button=>button.addEventListener('click',()=>{{
+  const frame=document.getElementById(button.dataset.target);zoom(frame);frame.scrollIntoView({{block:'center'}});
+}}));
+document.querySelectorAll('.narrow-calls button').forEach(button=>button.addEventListener('click',()=>{{
   const frame=document.getElementById(button.dataset.target);zoom(frame);frame.scrollIntoView({{block:'center'}});
 }}));
 document.getElementById('frame-filter').addEventListener('input',event=>{{
