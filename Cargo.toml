@@ -24,6 +24,8 @@ fault-smoke = []
 # Emits a single marker after several PIT IRQs so QEMU can verify timer
 # delivery without exposing a test command in normal builds.
 timer-smoke = []
+# Continuously samples guest call stacks and exports them on `shutdown`.
+profiling = []
 
 [dependencies]
 noto-sans-mono-bitmap = { version = "0.3", features = ["size_16", "size_20", "size_24", "size_32", "regular"] }
@@ -37,3 +39,4 @@ static_cell = "2.1.1"
 
 [profile.release]
 panic = "abort"
+debug = true

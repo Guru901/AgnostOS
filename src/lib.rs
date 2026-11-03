@@ -65,6 +65,9 @@ pub(crate) mod fault_smoke;
 #[cfg(feature = "timer-smoke")]
 pub(crate) mod timer_smoke;
 
+#[cfg(feature = "profiling")]
+pub(crate) mod profiling;
+
 /// PIT-backed tick counter and millisecond sleep helpers.
 pub mod timer;
 
