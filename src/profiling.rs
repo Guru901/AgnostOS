@@ -6,7 +6,7 @@
 
 use core::{
     cell::UnsafeCell,
-    sync::atomic::{AtomicU32, AtomicU8, AtomicU64, AtomicUsize, Ordering},
+    sync::atomic::{AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering},
 };
 use x86_64::structures::idt::InterruptStackFrame;
 
@@ -21,7 +21,10 @@ struct Sample {
 }
 
 impl Sample {
-    const EMPTY: Self = Self { depth: 0, ips: [0; MAX_DEPTH] };
+    const EMPTY: Self = Self {
+        depth: 0,
+        ips: [0; MAX_DEPTH],
+    };
 }
 
 struct SampleBuffer(UnsafeCell<[Sample; SAMPLE_CAPACITY]>);
