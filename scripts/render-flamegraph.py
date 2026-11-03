@@ -114,7 +114,7 @@ def render(root, output):
 
     def draw(node, x, y, w, label, path):
         nonlocal clip_id
-        if label is not None and w >= 1:
+        if label is not None:
             clip_id += 1
             this_clip = f"frame-clip-{clip_id}"
             this_frame = f"frame-{clip_id}"
