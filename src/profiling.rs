@@ -6,7 +6,7 @@
 
 use core::{
     cell::UnsafeCell,
-    sync::atomic::{AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering},
+    sync::atomic::{AtomicU8, AtomicU32, AtomicU64, AtomicUsize, Ordering},
 };
 use x86_64::structures::idt::InterruptStackFrame;
 
@@ -67,7 +67,9 @@ pub(crate) fn initialize(image_base: usize, image_size: usize) {
         if rva != 0
             && size >= 12
             && rva as usize <= image_size
-            && (rva as usize).checked_add(size).is_some_and(|end| end <= image_size)
+            && (rva as usize)
+                .checked_add(size)
+                .is_some_and(|end| end <= image_size)
         {
             UNWIND_TABLE_RVA.store(rva, Ordering::Relaxed);
             UNWIND_TABLE_COUNT.store(size / 12, Ordering::Relaxed);
@@ -146,7 +148,9 @@ pub(crate) fn sample(frame: &InterruptStackFrame) {
 
     let rsp: u64;
     // SAFETY: Reading RSP is observational and does not modify machine state.
-    unsafe { core::arch::asm!("mov {}, rsp", out(reg) rsp, options(nomem, nostack, preserves_flags)); }
+    unsafe {
+        core::arch::asm!("mov {}, rsp", out(reg) rsp, options(nomem, nostack, preserves_flags));
+    }
 
     let mut callers = [0_u64; MAX_DEPTH - 1];
     let depth = unwind_sample(
@@ -171,7 +175,9 @@ pub(crate) fn sample(frame: &InterruptStackFrame) {
 fn read_register_rbp() -> u64 {
     let rbp: u64;
     // SAFETY: Reading RBP is observational and does not modify machine state.
-    unsafe { core::arch::asm!("mov {}, rbp", out(reg) rbp, options(nomem, nostack, preserves_flags)); }
+    unsafe {
+        core::arch::asm!("mov {}, rbp", out(reg) rbp, options(nomem, nostack, preserves_flags));
+    }
     rbp
 }
 
@@ -299,7 +305,11 @@ fn unwind_one(pc: u64, rsp: u64, rbp: u64, stack_limit: u64, body: bool) -> Opti
         let frame_register = frame & 0x0f;
         let frame_offset = (frame >> 4) as u64 * 16;
         let offset = rva.saturating_sub(begin);
-        let prolog_offset = if body || offset >= prolog_size { u32::MAX } else { offset };
+        let prolog_offset = if body || offset >= prolog_size {
+            u32::MAX
+        } else {
+            offset
+        };
         let codes = unsafe { info.add(4) };
         let mut index = 0usize;
 
@@ -311,14 +321,18 @@ fn unwind_one(pc: u64, rsp: u64, rbp: u64, stack_limit: u64, body: bool) -> Opti
             let active = prolog_offset >= code_offset;
             let mut slots = 1usize;
             match op {
-                0 => { // UWOP_PUSH_NONVOL
+                0 => {
+                    // UWOP_PUSH_NONVOL
                     if active {
                         let value = unsafe { read_u64(caller_rsp as *const u8) };
-                        if op_info == 5 { caller_rbp = value; }
+                        if op_info == 5 {
+                            caller_rbp = value;
+                        }
                         caller_rsp = caller_rsp.checked_add(8)?;
                     }
                 }
-                1 => { // UWOP_ALLOC_LARGE
+                1 => {
+                    // UWOP_ALLOC_LARGE
                     let size = if op_info == 0 {
                         slots = 2;
                         unsafe { read_u16(codes.add((index + 1) * 2)) as u64 * 8 }
@@ -330,37 +344,52 @@ fn unwind_one(pc: u64, rsp: u64, rbp: u64, stack_limit: u64, body: bool) -> Opti
                     } else {
                         return None;
                     };
-                    if active { caller_rsp = caller_rsp.checked_add(size)?; }
-                }
-                2 => { // UWOP_ALLOC_SMALL
-                    if active { caller_rsp = caller_rsp.checked_add(op_info as u64 * 8 + 8)?; }
-                }
-                3 => { // UWOP_SET_FPREG
                     if active {
-                        if frame_register != 5 { return None; }
+                        caller_rsp = caller_rsp.checked_add(size)?;
+                    }
+                }
+                2 => {
+                    // UWOP_ALLOC_SMALL
+                    if active {
+                        caller_rsp = caller_rsp.checked_add(op_info as u64 * 8 + 8)?;
+                    }
+                }
+                3 => {
+                    // UWOP_SET_FPREG
+                    if active {
+                        if frame_register != 5 {
+                            return None;
+                        }
                         caller_rsp = caller_rbp.checked_sub(frame_offset)?;
                     }
                 }
-                4 => { // UWOP_SAVE_NONVOL
+                4 => {
+                    // UWOP_SAVE_NONVOL
                     slots = 2;
                     if active && op_info == 5 {
                         let offset = unsafe { read_u16(codes.add((index + 1) * 2)) as u64 * 8 };
                         caller_rbp = unsafe { read_u64((caller_rsp + offset) as *const u8) };
                     }
                 }
-                5 => { // UWOP_SAVE_NONVOL_FAR
+                5 => {
+                    // UWOP_SAVE_NONVOL_FAR
                     slots = 3;
                     if active && op_info == 5 {
                         let low = unsafe { read_u16(codes.add((index + 1) * 2)) } as u64;
                         let high = unsafe { read_u16(codes.add((index + 2) * 2)) } as u64;
-                        caller_rbp = unsafe { read_u64((caller_rsp + low + (high << 16)) as *const u8) };
+                        caller_rbp =
+                            unsafe { read_u64((caller_rsp + low + (high << 16)) as *const u8) };
                     }
                 }
-                8 | 9 => { // UWOP_SAVE_XMM128 / _FAR
+                8 | 9 => {
+                    // UWOP_SAVE_XMM128 / _FAR
                     slots = if op == 8 { 2 } else { 3 };
                 }
-                10 => { // UWOP_PUSH_MACHFRAME
-                    if active { caller_rsp = caller_rsp.checked_add(if op_info == 0 { 40 } else { 48 })?; }
+                10 => {
+                    // UWOP_PUSH_MACHFRAME
+                    if active {
+                        caller_rsp = caller_rsp.checked_add(if op_info == 0 { 40 } else { 48 })?;
+                    }
                 }
                 _ => return None,
             }
@@ -372,7 +401,11 @@ fn unwind_one(pc: u64, rsp: u64, rbp: u64, stack_limit: u64, body: bool) -> Opti
         return None;
     }
     let return_ip = unsafe { read_u64(caller_rsp as *const u8) };
-    Some(UnwindStep { return_ip, caller_rsp: caller_rsp.checked_add(8)?, caller_rbp })
+    Some(UnwindStep {
+        return_ip,
+        caller_rsp: caller_rsp.checked_add(8)?,
+        caller_rbp,
+    })
 }
 
 fn is_epilogue(pc: u64, function_end: u64) -> bool {
@@ -390,9 +423,7 @@ fn is_epilogue(pc: u64, function_end: u64) -> bool {
         index += 4; // add rsp, imm8
     } else if code.get(index..index + 3) == Some(&[0x48, 0x81, 0xc4]) {
         index += 7; // add rsp, imm32
-    } else if matches!(code.get(index), Some(0x48..=0x4f))
-        && code.get(index + 1) == Some(&0x8d)
-    {
+    } else if matches!(code.get(index), Some(0x48..=0x4f)) && code.get(index + 1) == Some(&0x8d) {
         let rex = code[index];
         let Some(&modrm) = code.get(index + 2) else {
             return false;
