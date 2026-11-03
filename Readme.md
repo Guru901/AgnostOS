@@ -11,6 +11,7 @@ You will need:
 - A recent Rust toolchain with Cargo and `rustup`.
 - The `x86_64-unknown-uefi` Rust target.
 - QEMU with the `qemu-system-x86_64` executable available on your `PATH`.
+- LLVM's `llvm-pdbutil` for resolving UEFI guest symbols when profiling.
 - Bash to run the provided build script.
 
 Install the required Rust target once:
@@ -45,6 +46,21 @@ The resulting UEFI executable is written to:
 ```text
 target/x86_64-unknown-uefi/release/agnostos.efi
 ```
+
+## Profile the guest in QEMU
+
+Run the profiling build from the repository root:
+
+```sh
+./scripts/profile.sh
+```
+
+Sampling starts automatically during kernel startup and continues while the OS
+runs. Type `shutdown` in the guest to export the samples and exit QEMU. The
+script resolves the captured guest stacks with the matching PDB symbols and
+writes `flamegraph.html` in the repository root. Pass a different output path
+as the first argument if desired. The default buffer holds about five minutes
+of samples at 100 Hz.
 
 To package the UEFI executable as a bootable UEFI ISO:
 

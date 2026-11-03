@@ -10,6 +10,9 @@ impl QemuExitCode {
 
 /// Writes the QEMU isa-debug-exit code and then halts.
 pub(crate) fn exit_qemu(code: QemuExitCode) -> ! {
+    #[cfg(feature = "profiling")]
+    crate::profiling::dump();
+
     // SAFETY: port `0xf4` is the QEMU isa-debug-exit device configured for this
     // kernel. Calling this on other hardware can have device-specific effects.
     unsafe {
