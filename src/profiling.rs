@@ -270,13 +270,21 @@ fn unwind_one(pc: u64, rsp: u64, rbp: u64, stack_limit: u64, body: bool) -> Opti
         } else if rva >= end {
             low = mid + 1;
         } else {
-            record = Some((begin, unsafe { read_u32(entry.add(8)) }));
+            record = Some((begin, end, unsafe { read_u32(entry.add(8)) }));
             break;
         }
     }
 
     let (mut caller_rsp, mut caller_rbp) = (rsp, rbp);
-    if let Some((begin, unwind_rva)) = record {
+    if let Some((begin, end, unwind_rva)) = record {
+        // Windows x64 epilogues restore the caller state in the instruction
+        // stream, rather than through the prolog unwind codes. We cannot
+        // safely simulate every supported epilogue instruction here, so drop
+        // samples whose remaining instruction stream matches an epilogue.
+        let function_end = base.checked_add(end as u64)?;
+        if is_epilogue(pc, function_end) {
+            return None;
+        }
         // SAFETY: UnwindData is an RVA within the loaded PE image.
         let info = (base + unwind_rva as u64) as *const u8;
         let version_flags = unsafe { *info };
@@ -365,6 +373,86 @@ fn unwind_one(pc: u64, rsp: u64, rbp: u64, stack_limit: u64, body: bool) -> Opti
     }
     let return_ip = unsafe { read_u64(caller_rsp as *const u8) };
     Some(UnwindStep { return_ip, caller_rsp: caller_rsp.checked_add(8)?, caller_rbp })
+}
+
+fn is_epilogue(pc: u64, function_end: u64) -> bool {
+    let length = function_end.saturating_sub(pc).min(64) as usize;
+    if length == 0 {
+        return false;
+    }
+    // SAFETY: `pc` is inside the loaded .text section and the runtime-function
+    // end bounds this read to the current function.
+    let code = unsafe { core::slice::from_raw_parts(pc as *const u8, length) };
+    let mut index = 0;
+
+    // An epilogue may begin by releasing its fixed stack allocation.
+    if code.get(index..index + 3) == Some(&[0x48, 0x83, 0xc4]) {
+        index += 4; // add rsp, imm8
+    } else if code.get(index..index + 3) == Some(&[0x48, 0x81, 0xc4]) {
+        index += 7; // add rsp, imm32
+    } else if matches!(code.get(index), Some(0x48..=0x4f))
+        && code.get(index + 1) == Some(&0x8d)
+    {
+        let rex = code[index];
+        let Some(&modrm) = code.get(index + 2) else {
+            return false;
+        };
+        let mode = modrm >> 6;
+        let destination = (modrm >> 3) & 7;
+        let base = modrm & 7;
+        if destination != 4 || rex & 4 != 0 || !(mode == 1 || mode == 2) {
+            return false;
+        }
+        let mut displacement = 0;
+        let base_register = if base == 4 {
+            let Some(&sib) = code.get(index + 3) else {
+                return false;
+            };
+            if sib >> 3 & 7 != 4 {
+                return false;
+            }
+            displacement = 1;
+            (sib & 7) + if rex & 1 != 0 { 8 } else { 0 }
+        } else {
+            base + if rex & 1 != 0 { 8 } else { 0 }
+        };
+        if !matches!(base_register, 3 | 5 | 6 | 7 | 12 | 13 | 14 | 15) {
+            return false;
+        }
+        index += 3 + displacement + if mode == 1 { 1 } else { 4 };
+    }
+
+    // Remaining nonvolatile registers may be restored with POPs. The PC can
+    // already be partway through this sequence when the timer interrupts.
+    loop {
+        let Some(&opcode) = code.get(index) else {
+            return false;
+        };
+        let (register, size) = if (0x58..=0x5f).contains(&opcode) {
+            (opcode - 0x58, 1)
+        } else if opcode == 0x41 {
+            let Some(&next) = code.get(index + 1) else {
+                return false;
+            };
+            if !(0x58..=0x5f).contains(&next) {
+                break;
+            }
+            (next - 0x58 + 8, 2)
+        } else {
+            break;
+        };
+        if !matches!(register, 3 | 5 | 6 | 7 | 12 | 13 | 14 | 15) {
+            return false;
+        }
+        index += size;
+    }
+
+    match code.get(index..) {
+        Some([0xc3, ..]) | Some([0xc2, _, _, ..]) | Some([0xf3, 0xc3, ..]) => true,
+        Some([0xe9, _, _, _, _, ..]) | Some([0xeb, _, ..]) => true,
+        Some([0xff, modrm, ..]) => (modrm >> 3) & 7 == 4,
+        _ => false,
+    }
 }
 
 unsafe fn read_u16(pointer: *const u8) -> u16 {
