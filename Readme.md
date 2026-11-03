@@ -14,10 +14,11 @@ You will need:
 - LLVM's `llvm-pdbutil` for resolving UEFI guest symbols when profiling.
 - Bash to run the provided build script.
 
-Install the required Rust target once:
+Install the pinned nightly toolchain and its UEFI target once:
 
 ```sh
-rustup target add x86_64-unknown-uefi
+rustup toolchain install nightly-2026-08-01 --profile minimal
+rustup target add x86_64-unknown-uefi --toolchain nightly-2026-08-01
 ```
 
 The repository includes the UEFI firmware image required by the run script at
