@@ -203,7 +203,7 @@ svg{{display:block;width:100%;height:auto;min-width:680px;overflow:hidden;vertic
 <div id="details" aria-live="polite">Hover over a frame for its function and sample count. Click to zoom.</div>
 </section>
 <section class="card functions" aria-label="Functions in profile">
-<div class="functions-head"><h2>Functions <span class="hint">({len(frame_index)})</span></h2>
+<div class="functions-head"><h2>Functions <span class="hint">({len({name for _, name, _ in frame_index})})</span></h2>
 <input id="frame-filter" type="search" placeholder="Search functions" aria-label="Search functions"></div>
 <ul id="frame-index">{index_items}</ul><div id="empty-state" hidden>No matching functions.</div>
 </section></main>
@@ -296,12 +296,15 @@ def main():
     for stack in samples:
         # The first IP is the interrupted leaf; subsequent entries walk toward
         # callers, so reverse to build the conventional root-to-leaf graph.
-        resolved = [names[address] for address in reversed(stack) if names[address]]
+        resolved = [names[address] or "[unknown]" for address in reversed(stack)]
         resolved = [
             name for name in resolved
-            if "profiling::" not in name and "interrupts::handlers::timer" not in name
+            if name == "[unknown]" or (
+                "profiling::" not in name
+                and "interrupts::handlers::timer" not in name
+            )
         ]
-        if resolved:
+        if any(name != "[unknown]" for name in resolved):
             add_stack(root, resolved)
     if not root["samples"]:
         fail("none of the captured stacks resolved to kernel functions")
