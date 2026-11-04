@@ -119,6 +119,7 @@ pub(super) extern "x86-interrupt" fn machine_check(_stack_frame: InterruptStackF
     halt()
 }
 
+#[cfg_attr(feature = "profiling", agnostos_profile_macro::not_profiled)]
 pub(super) extern "x86-interrupt" fn timer(_stack_frame: InterruptStackFrame) {
     TICKS.fetch_add(1, Ordering::Relaxed);
     #[cfg(feature = "timer-smoke")]

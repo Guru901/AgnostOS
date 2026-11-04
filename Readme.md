@@ -55,11 +55,31 @@ Run the profiling build from the repository root:
 ./scripts/profile.sh
 ```
 
-Only functions marked with `#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled)]`
-are recorded. Type `shutdown` in the guest to export invocation counts and exit
-QEMU. The script writes `flamegraph.html` in the repository root; pass a
-different output path as the first argument if desired. The report is a flat
-function invocation profile, not a sampled call stack graph.
+The script runs QEMU headlessly, waits for the shell-ready signal, types a
+default command set (`taskinfo`, `uptime`, `history`, `font 24`), sends
+`shutdown`, and renders the report. Functions in modules marked with
+`profiled_module` are recorded. The output defaults to `flamegraph.html` in the
+repository root. Pass a different output path first and override the commands
+with repeated `--command` options:
+
+```sh
+./scripts/profile.sh /tmp/boot-profile.html --command taskinfo --command uptime --command "font 24"
+```
+
+For an external module file, use `profiled_module` on its declaration to
+instrument all functions in that file when profiling is enabled:
+
+```rust
+#[cfg_attr(
+    feature = "profiling",
+    agnostos_profile_macro::profiled_module("src/console/mod.rs")
+)]
+pub mod console;
+```
+
+Exclude individual functions with
+`#[cfg_attr(feature = "profiling", agnostos_profile_macro::not_profiled)]`.
+The file path is relative to the crate root. `const fn` bodies are left alone.
 
 To package the UEFI executable as a bootable UEFI ISO:
 

@@ -7,10 +7,12 @@
 
 use core::fmt;
 
+#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled_module("src/task/context.rs"))]
 pub mod context;
+#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled_module("src/task/stack.rs"))]
 pub mod stack;
 
-use crate::{globals::task::MAX_TASKS, kprintln};
+use crate::globals::task::MAX_TASKS;
 use context::TaskContext;
 use spin::Mutex;
 use stack::TaskStack;
@@ -20,6 +22,7 @@ use stack::TaskStack;
 static SCHEDULER: Mutex<Scheduler> = Mutex::new(Scheduler::new());
 
 /// Runs `f` with exclusive access to the kernel scheduler.
+#[cfg_attr(feature = "profiling", agnostos_profile_macro::not_profiled)]
 pub fn with_scheduler<F, R>(f: F) -> R
 where
     F: FnOnce(&mut Scheduler) -> R,
@@ -119,7 +122,6 @@ pub struct SchedulerStats {
 
 impl SchedulerStats {
     /// Prints live scheduler occupancy to the kernel console.
-    #[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled)]
     pub fn taskinfo() {
         let stats = with_scheduler(|scheduler| scheduler.stats());
         kprintln!("task slots:  {} / {}", stats.task_count, MAX_TASKS);
@@ -254,6 +256,7 @@ impl Scheduler {
     ///
     /// The task is marked running before its entry is called. The returned
     /// [`TaskAction`] is the only way it leaves Running.
+    #[cfg_attr(feature = "profiling", agnostos_profile_macro::not_profiled)]
     pub fn run_next(&mut self, now: u64) -> Result<Option<TaskId>, SchedulerError> {
         self.wake_expired(now);
         let Some(index) = self.find_next_ready() else {
@@ -293,6 +296,7 @@ impl Scheduler {
     /// Runs ready tasks until the scheduler is idle or `budget` dispatches
     /// have completed. A finite budget prevents a task that continually yields
     /// from starving the kernel's other work.
+    #[cfg_attr(feature = "profiling", agnostos_profile_macro::not_profiled)]
     pub fn run_ready(&mut self, now: u64, budget: usize) -> Result<usize, SchedulerError> {
         let mut dispatched = 0;
         while dispatched < budget {

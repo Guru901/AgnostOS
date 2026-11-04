@@ -10,6 +10,7 @@ use crate::{TICKS, platform};
 use core::{hint::spin_loop, sync::atomic::Ordering};
 
 /// PIT IRQs observed since kernel init.
+#[cfg_attr(feature = "profiling", agnostos_profile_macro::not_profiled)]
 pub(crate) fn ticks() -> u64 {
     TICKS.load(Ordering::Relaxed)
 }
@@ -19,7 +20,6 @@ pub fn uptime_ms() -> u64 {
     ticks().saturating_mul(PIT_DIVISOR).saturating_mul(1_000) / PIT_FREQUENCY
 }
 
-#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled)]
 pub(crate) fn uptime() -> String {
     format_uptime(uptime_ms())
 }

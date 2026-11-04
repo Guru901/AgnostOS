@@ -115,6 +115,7 @@ pub(crate) fn pop_keyboard_scancode() -> Option<KeyboardScancode> {
 ///
 /// Call this with interrupts disabled when using the result to decide whether
 /// to sleep. That makes the check atomic with respect to the IRQ producer.
+#[cfg_attr(feature = "profiling", agnostos_profile_macro::not_profiled)]
 pub(crate) fn keyboard_queue_is_empty() -> bool {
     // SAFETY: initialization completes before interrupts are enabled. The
     // shell calls this with interrupts disabled, so the IRQ producer cannot
@@ -152,6 +153,7 @@ pub(crate) enum KeyboardEvent {
 }
 
 /// Pops one scancode, feeds the `pc-keyboard` state machine, and maps it to a [`KeyboardEvent`].
+#[cfg_attr(feature = "profiling", agnostos_profile_macro::not_profiled)]
 pub(crate) fn poll() -> Option<KeyboardEvent> {
     // An IRQ can preempt this code. Disable interrupts while holding the queue
     // lock so the handler never spins waiting for the interrupted code to unlock it.

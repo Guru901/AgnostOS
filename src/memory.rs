@@ -9,7 +9,6 @@ use core::{fmt, sync::atomic::Ordering};
 use crate::{
     HEAP_SIZE, HEAP_START,
     globals::frame::{MAX_MEMORY_RANGES, PAGE_SIZE},
-    kprintln,
 };
 use spin::{Mutex, Once};
 use uefi::mem::memory_map::{MemoryMap, MemoryType};
@@ -379,7 +378,6 @@ pub struct MemorySummary {
 
 impl MemorySummary {
     /// Prints heap and map totals to the kernel console.
-    #[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled)]
     pub fn meminfo() {
         let start = HEAP_START.load(Ordering::Relaxed);
         let size = HEAP_SIZE.load(Ordering::Relaxed);

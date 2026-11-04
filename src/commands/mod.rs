@@ -4,11 +4,14 @@
 //! with `-` are flags; the rest are positional arguments. Unrecognized names become
 //! [`parser::Command::Unknown`].
 
+#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled_module("src/commands/help.rs"))]
 mod help;
+#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled_module("src/commands/parser.rs"))]
 mod parser;
+#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled_module("src/commands/shutdown.rs"))]
 mod shutdown;
 
-use crate::{commands::help::help, console, kprintln, memory, task, timer};
+use crate::{commands::help::help, console, memory, task, timer};
 use noto_sans_mono_bitmap::RasterHeight;
 use parser::{Command, parse};
 
@@ -17,7 +20,6 @@ use parser::{Command, parse};
 /// Splits the input into a command name, flags (tokens starting with `-`),
 /// and positional arguments. Dispatches to the appropriate handler or prints
 /// "Unknown command" if the command is not recognized.
-#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled)]
 pub(crate) fn run_command(command: &str) {
     let parsed = parse(command);
     let _ = parsed.flags;

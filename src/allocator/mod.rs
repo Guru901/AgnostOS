@@ -50,7 +50,6 @@ pub enum HeapError {
 /// # Safety
 /// This may only be called once, after all UEFI boot services have been used.
 /// The returned region is available for exclusive use by the allocator.
-///
 pub fn initialize_heap(
     framebuffer: Option<(usize, usize)>,
     kernel_image: (usize, usize),

@@ -16,7 +16,6 @@ use crate::{
     commands::run_command,
     console,
     keyboard::{self, KEYBOARD_DROPPED, KeyboardEvent},
-    kprint, kprintln,
     task::TaskAction,
     timer::ticks,
 };
@@ -61,7 +60,6 @@ fn task_two() -> TaskAction {
 /// - Ctrl+L clears the screen.
 /// - Arrow up/down navigate command history.
 /// - Ctrl+Plus/Minus zoom the font in/out.
-#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled)]
 pub fn init() -> ! {
     console::clear_background();
 
@@ -81,6 +79,8 @@ pub fn init() -> ! {
 
     kprint!("{PROMPT}");
     console::draw_cursor();
+    #[cfg(feature = "profiling")]
+    crate::profiling::guest_ready();
     #[cfg(feature = "mouse")]
     crate::interrupts::enable_mouse();
 

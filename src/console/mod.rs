@@ -271,27 +271,8 @@ pub fn kprint(args: fmt::Arguments) {
     }
 }
 
-/// Prints to the kernel console without a trailing newline.
-#[macro_export]
-macro_rules! kprint {
-    ($($arg:tt)*) => {
-        $crate::console::kprint(format_args!($($arg)*))
-    };
-}
-
-/// Prints to the kernel console with a trailing newline.
-#[macro_export]
-macro_rules! kprintln {
-    () => ($crate::kprint!("\n"));
-    ($($arg:tt)*) => {{
-        $crate::kprint!($($arg)*);
-        $crate::kprint!("\n");
-    }};
-}
-
 /// Clears the screen, resets the cursor to the top-left, and wipes all
 /// history. Called by the `clear` shell command and Ctrl+L.
-#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled)]
 pub(crate) fn reset() {
     if let Some(writer) = KWRITER.lock().as_mut() {
         graphics::clear_background(&writer.fb, &color::BLACK);
@@ -320,7 +301,6 @@ pub(crate) fn backspace(line: &mut String) {
     }
 }
 
-#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled)]
 pub(crate) fn insert_char(line: &mut String, ch: char) {
     if line.chars().count() >= MAX_INPUT_CHARS {
         return;
@@ -391,7 +371,6 @@ pub(crate) fn erase_cursor() {
 ///
 /// Only the most recent lines that fit on screen are shown. Used after
 /// zoom changes to re-render history at the new font size.
-#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled)]
 pub(crate) fn print_history() {
     if let Some(writer) = KWRITER.lock().as_mut() {
         let fh = font_h(writer.font_size);
@@ -537,7 +516,7 @@ pub(crate) fn arrow_down(current_line: &mut String) {
 /// Redraws the current input line in place — erases the row, redraws the
 /// prompt, then draws `text` after it. Updates `writer.x` to the end of
 /// the new text so the cursor lands in the right place.
-#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled)]
+#[cfg_attr(feature = "profiling", agnostos_profile_macro::not_profiled)]
 fn redraw_input_line(writer: &mut KWriter, text: &str, cursor: usize) {
     let fh = font_h(writer.font_size);
     let fw = font_w(writer.font_size);
@@ -696,7 +675,6 @@ mod tests {
 /// Sets the font size directly without redrawing. Use [`zoom_in`]/[`zoom_out`]
 /// for size changes that should also redraw history. This is used by the
 /// `font` shell command.
-#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled)]
 pub(crate) fn set_font_size(font_size: RasterHeight) {
     if let Some(writer) = KWRITER.lock().as_mut() {
         writer.font_size = font_size;

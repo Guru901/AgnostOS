@@ -5,7 +5,6 @@
 //! sequence here makes its ordering explicit and gives future subsystems one
 //! place to add initialization dependencies.
 
-use crate::kprintln;
 #[cfg(not(feature = "fault-smoke"))]
 use crate::shell;
 use crate::{allocator, console, graphics::Framebuffer, interrupts, paging, uefi_graphics};
@@ -16,7 +15,6 @@ use uefi::{boot, proto::loaded_image::LoadedImage};
 ///
 /// Order matters: GOP and console first, then ExitBootServices + heap, then
 /// paging, then the IDT. Device IRQs stay masked until [`interrupts::enable_runtime`].
-#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled)]
 pub fn initialize() -> Status {
     if let Err(error) = uefi::helpers::init() {
         return error.status();
