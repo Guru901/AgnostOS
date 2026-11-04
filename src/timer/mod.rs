@@ -19,6 +19,7 @@ pub fn uptime_ms() -> u64 {
     ticks().saturating_mul(PIT_DIVISOR).saturating_mul(1_000) / PIT_FREQUENCY
 }
 
+#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled)]
 pub(crate) fn uptime() -> String {
     format_uptime(uptime_ms())
 }

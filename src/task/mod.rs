@@ -119,6 +119,7 @@ pub struct SchedulerStats {
 
 impl SchedulerStats {
     /// Prints live scheduler occupancy to the kernel console.
+    #[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled)]
     pub fn taskinfo() {
         let stats = with_scheduler(|scheduler| scheduler.stats());
         kprintln!("task slots:  {} / {}", stats.task_count, MAX_TASKS);

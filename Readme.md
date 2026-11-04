@@ -61,7 +61,10 @@ runs. Type `shutdown` in the guest to export the samples and exit QEMU. The
 script resolves the captured guest stacks with the matching PDB symbols and
 writes `flamegraph.html` in the repository root. Pass a different output path
 as the first argument if desired. The default buffer holds about five minutes
-of samples at 100 Hz.
+of samples at 100 Hz. The report also counts instrumented function invocations,
+including short calls that may fall between timer samples.
+Add `#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled)]` to a
+function to record each invocation in profiling builds.
 
 To package the UEFI executable as a bootable UEFI ISO:
 

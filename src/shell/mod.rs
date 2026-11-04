@@ -61,6 +61,7 @@ fn task_two() -> TaskAction {
 /// - Ctrl+L clears the screen.
 /// - Arrow up/down navigate command history.
 /// - Ctrl+Plus/Minus zoom the font in/out.
+#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled)]
 pub fn init() -> ! {
     console::clear_background();
 

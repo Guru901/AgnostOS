@@ -25,7 +25,7 @@ fault-smoke = []
 # delivery without exposing a test command in normal builds.
 timer-smoke = []
 # Continuously samples guest call stacks and exports them on `shutdown`.
-profiling = []
+profiling = ["dep:agnostos-profile-macro"]
 
 [dependencies]
 noto-sans-mono-bitmap = { version = "0.3", features = ["size_16", "size_20", "size_24", "size_32", "regular"] }
@@ -36,6 +36,7 @@ x86_64 = { version = "0.15.5", default-features = false, features = ["instructio
 linked_list_allocator = { version = "0.10.5", default-features = false, features = ["use_spin"], optional = true }
 ringbuf = { version = "0.5.1", default-features = false }
 static_cell = "2.1.1"
+agnostos-profile-macro = { path = "profile-macro", optional = true }
 
 [profile.release]
 panic = "abort"

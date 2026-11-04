@@ -44,6 +44,7 @@ pub(crate) struct ParsedCommand<'a> {
 }
 
 /// Splits `input` on whitespace and classifies the first token as a [`Command`].
+#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled)]
 pub(crate) fn parse(input: &str) -> ParsedCommand<'_> {
     let mut tokens = input.split_whitespace();
     let command = match tokens.next().unwrap_or("") {

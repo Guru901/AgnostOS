@@ -12,6 +12,7 @@ use x86_64::structures::idt::InterruptStackFrame;
 
 const SAMPLE_EVERY_TICKS: u8 = 10;
 const SAMPLE_CAPACITY: usize = 32_768;
+const EVENT_CAPACITY: usize = 65_536;
 const MAX_DEPTH: usize = 16;
 
 #[derive(Clone, Copy)]
@@ -33,7 +34,11 @@ struct SampleBuffer(UnsafeCell<[Sample; SAMPLE_CAPACITY]>);
 unsafe impl Sync for SampleBuffer {}
 
 static SAMPLES: SampleBuffer = SampleBuffer(UnsafeCell::new([Sample::EMPTY; SAMPLE_CAPACITY]));
+struct EventBuffer(UnsafeCell<[&'static str; EVENT_CAPACITY]>);
+unsafe impl Sync for EventBuffer {}
+static EVENTS: EventBuffer = EventBuffer(UnsafeCell::new([""; EVENT_CAPACITY]));
 static SAMPLE_COUNT: AtomicUsize = AtomicUsize::new(0);
+static EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
 static TICK_DIVIDER: AtomicU8 = AtomicU8::new(0);
 static IMAGE_BASE: AtomicU64 = AtomicU64::new(0);
 static CODE_START: AtomicU64 = AtomicU64::new(0);
@@ -169,6 +174,19 @@ pub(crate) fn sample(frame: &InterruptStackFrame) {
     // shutdown disables interrupts before reading the buffer.
     unsafe { (*SAMPLES.0.get())[index] = sample };
     SAMPLE_COUNT.store(index + 1, Ordering::Relaxed);
+}
+
+/// Records a function reached through shell command dispatch. Timer sampling
+/// often misses these short calls, so the profile exports them separately.
+pub(crate) fn record_function(name: &'static str) {
+    let index = EVENT_COUNT.load(Ordering::Relaxed);
+    if index >= EVENT_CAPACITY {
+        return;
+    }
+    // SAFETY: The single-core shell is the sole event writer; shutdown disables
+    // interrupts before exporting the buffer.
+    unsafe { (*EVENTS.0.get())[index] = name };
+    EVENT_COUNT.store(index + 1, Ordering::Relaxed);
 }
 
 #[inline(always)]
@@ -516,6 +534,14 @@ pub(crate) fn dump() {
             write_hex(*ip);
             write_bytes(b" ");
         }
+        write_bytes(b"\n");
+    }
+    let event_count = EVENT_COUNT.load(Ordering::Relaxed);
+    // SAFETY: Interrupts are disabled and the shell no longer records events.
+    let events = unsafe { &*EVENTS.0.get() };
+    for event in events.iter().take(event_count) {
+        write_bytes(b"E:");
+        write_bytes(event.as_bytes());
         write_bytes(b"\n");
     }
     write_bytes(b"AGNOSTOS_PROFILE_END\n");

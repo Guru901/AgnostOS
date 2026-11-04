@@ -16,6 +16,7 @@ use uefi::{boot, proto::loaded_image::LoadedImage};
 ///
 /// Order matters: GOP and console first, then ExitBootServices + heap, then
 /// paging, then the IDT. Device IRQs stay masked until [`interrupts::enable_runtime`].
+#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled)]
 pub fn initialize() -> Status {
     if let Err(error) = uefi::helpers::init() {
         return error.status();

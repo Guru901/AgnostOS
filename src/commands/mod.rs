@@ -17,6 +17,7 @@ use parser::{Command, parse};
 /// Splits the input into a command name, flags (tokens starting with `-`),
 /// and positional arguments. Dispatches to the appropriate handler or prints
 /// "Unknown command" if the command is not recognized.
+#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled)]
 pub(crate) fn run_command(command: &str) {
     let parsed = parse(command);
     let _ = parsed.flags;

@@ -90,7 +90,7 @@ def add_stack(root, names):
         node["samples"] += 1
 
 
-def render(root, output):
+def render(root, executed, output):
     row_height = 24
     frame_height = 22
     max_depth = 0
@@ -159,6 +159,11 @@ def render(root, output):
         f'</button></li>'
         for frame_id, name, count, color in sorted(narrow_index, key=lambda item: (-item[2], item[1]))
     )
+    executed_items = "".join(
+        f'<li><span class="function-name">{html.escape(name)}</span>'
+        f'<span class="function-count">{count} call{"s" if count != 1 else ""}</span></li>'
+        for name, count in sorted(executed.items())
+    ) or '<li class="empty-executed">No command functions were recorded.</li>'
 
     document = f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -198,6 +203,8 @@ h1{{font-size:22px;line-height:1.2;margin:0 0 5px;letter-spacing:-.02em}}
 .narrow-head h2{{font-size:15px;margin:0 0 3px}}.narrow-head p{{margin:0;color:var(--muted)}}
 .narrow-calls ul{{list-style:none;padding:0;margin:0;max-height:240px;overflow:auto}}
 .narrow-calls li+li{{border-top:1px solid #f0f1f3}}
+.executed-functions{{margin-top:16px;overflow:hidden}}.executed-functions ul{{list-style:none;padding:0;margin:0;max-height:240px;overflow:auto}}
+.executed-functions li{{display:flex;justify-content:space-between;gap:16px;padding:9px 18px}}.executed-functions li+li{{border-top:1px solid #f0f1f3}}.empty-executed{{color:var(--muted)}}
 .narrow-calls button{{display:flex;width:100%;align-items:center;gap:10px;text-align:left;border:0;background:#fff;padding:9px 18px;color:var(--ink)}}
 .narrow-calls button:hover,.narrow-calls button:focus{{background:#fff8eb;outline:none}}
 .narrow-swatch{{width:12px;height:12px;flex:none;border:1px solid #0002;border-radius:3px}}
@@ -215,6 +222,10 @@ h1{{font-size:22px;line-height:1.2;margin:0 0 5px;letter-spacing:-.02em}}
 <section class="card narrow-calls" aria-label="Frames too narrow for labels">
 <div class="narrow-head"><h2>Too narrow to label</h2><p>These frames are tiny because they have few samples. Select a function to zoom in.</p></div>
 <ul>{narrow_items}</ul>
+</section>
+<section class="card executed-functions" aria-label="Instrumented function calls">
+<div class="narrow-head"><h2>Instrumented function calls</h2><p>Invocation counts from functions marked with <code>#[profiled]</code>, including calls too brief for timer sampling.</p></div>
+<ul>{executed_items}</ul>
 </section>
 <section class="card functions" aria-label="Functions in profile">
 <div class="functions-head"><h2>Functions <span class="hint">({len({name for _, name, _ in frame_index})})</span></h2>
@@ -313,12 +324,18 @@ def main():
     if "AGNOSTOS_PROFILE_V1" not in lines or "AGNOSTOS_PROFILE_END" not in lines:
         fail("profile trace is incomplete or has an unsupported format")
     samples = []
+    executed = {}
     addresses = set()
     anchor_line = next((line for line in lines if line.startswith("AGNOSTOS_PROFILE_ANCHOR=")), None)
     if not anchor_line:
         fail("profile trace has no symbolization anchor")
     anchor = int(anchor_line.split("=", 1)[1], 16)
     for line in lines:
+        if line.startswith("E:"):
+            name = line[2:].strip()
+            if name:
+                executed[name] = executed.get(name, 0) + 1
+            continue
         if not line.startswith("P:"):
             continue
         try:
@@ -348,7 +365,7 @@ def main():
     if not root["samples"]:
         fail("none of the captured stacks resolved to kernel functions")
     output.parent.mkdir(parents=True, exist_ok=True)
-    render(root, output)
+    render(root, executed, output)
     print(f"Rendered {root['samples']} resolved samples (of {len(samples)} captured) to {output}")
 
 
