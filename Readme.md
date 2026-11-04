@@ -11,7 +11,6 @@ You will need:
 - A recent Rust toolchain with Cargo and `rustup`.
 - The `x86_64-unknown-uefi` Rust target.
 - QEMU with the `qemu-system-x86_64` executable available on your `PATH`.
-- LLVM's `llvm-pdbutil` for resolving UEFI guest symbols when profiling.
 - Bash to run the provided build script.
 
 Install the pinned nightly toolchain and its UEFI target once:
@@ -56,15 +55,11 @@ Run the profiling build from the repository root:
 ./scripts/profile.sh
 ```
 
-Sampling starts automatically during kernel startup and continues while the OS
-runs. Type `shutdown` in the guest to export the samples and exit QEMU. The
-script resolves the captured guest stacks with the matching PDB symbols and
-writes `flamegraph.html` in the repository root. Pass a different output path
-as the first argument if desired. The default buffer holds about five minutes
-of samples at 100 Hz. The report also counts instrumented function invocations,
-including short calls that may fall between timer samples.
-Add `#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled)]` to a
-function to record each invocation in profiling builds.
+Only functions marked with `#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled)]`
+are recorded. Type `shutdown` in the guest to export invocation counts and exit
+QEMU. The script writes `flamegraph.html` in the repository root; pass a
+different output path as the first argument if desired. The report is a flat
+function invocation profile, not a sampled call stack graph.
 
 To package the UEFI executable as a bootable UEFI ISO:
 

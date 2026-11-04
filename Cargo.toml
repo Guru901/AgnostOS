@@ -24,7 +24,7 @@ fault-smoke = []
 # Emits a single marker after several PIT IRQs so QEMU can verify timer
 # delivery without exposing a test command in normal builds.
 timer-smoke = []
-# Continuously samples guest call stacks and exports them on `shutdown`.
+# Records explicitly annotated function entries and exports them on `shutdown`.
 profiling = ["dep:agnostos-profile-macro"]
 
 [dependencies]

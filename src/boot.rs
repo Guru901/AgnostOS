@@ -63,8 +63,6 @@ pub fn initialize() -> Status {
         fatal("page-table initialization failed", error);
     }
 
-    #[cfg(feature = "profiling")]
-    crate::profiling::initialize(kernel_image.0, kernel_image.1);
     interrupts::init();
     #[cfg(feature = "input-smoke")]
     crate::input_smoke::ready();
