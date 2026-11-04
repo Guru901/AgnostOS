@@ -3,3 +3,5 @@
 /docs/*
 !/docs/KERNEL_READINESS.md
 .DS_Store
+flamegraph.html
+perf.data
