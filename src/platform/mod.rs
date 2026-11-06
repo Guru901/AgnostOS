@@ -45,6 +45,7 @@ pub(crate) fn halt() {
 
 /// Disables maskable interrupts on the kernel target.
 #[inline]
+#[cfg_attr(feature = "profiling", agnostos_profile_macro::not_profiled)]
 pub(crate) fn disable_interrupts() {
     #[cfg(target_arch = "x86_64")]
     x86_64::instructions::interrupts::disable();
@@ -52,6 +53,7 @@ pub(crate) fn disable_interrupts() {
 
 /// Atomically enables interrupts and sleeps until the next interrupt.
 #[inline]
+#[cfg_attr(feature = "profiling", agnostos_profile_macro::not_profiled)]
 pub(crate) fn enable_and_hlt() {
     #[cfg(target_arch = "x86_64")]
     x86_64::instructions::interrupts::enable_and_hlt();

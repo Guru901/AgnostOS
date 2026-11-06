@@ -9,7 +9,6 @@ use core::{fmt, sync::atomic::Ordering};
 use crate::{
     HEAP_SIZE, HEAP_START,
     globals::frame::{MAX_MEMORY_RANGES, PAGE_SIZE},
-    kprintln,
 };
 use spin::{Mutex, Once};
 use uefi::mem::memory_map::{MemoryMap, MemoryType};

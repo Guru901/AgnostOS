@@ -1,5 +1,3 @@
-use crate::kprintln;
-
 use super::parser::{Command, parse};
 
 /// Prints help text for a specific command, or a full command listing if

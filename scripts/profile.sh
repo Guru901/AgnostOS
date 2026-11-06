@@ -3,10 +3,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-OUTPUT="${1:-$PROJECT_ROOT/flamegraph.html}"
+OUTPUT="$PROJECT_ROOT/flamegraph.html"
+if [[ $# -gt 0 && "$1" != --* ]]; then
+    OUTPUT="$1"
+    shift
+fi
 RUST_TOOLCHAIN="${RUST_TOOLCHAIN:-nightly-2026-08-01}"
 
-for command in cargo qemu-system-x86_64 python3 llvm-pdbutil; do
+for command in cargo qemu-system-x86_64 python3; do
     if ! command -v "$command" >/dev/null 2>&1; then
         echo "Error: $command is required and must be on PATH." >&2
         exit 1
@@ -24,30 +28,20 @@ TRACE="$WORK_DIR/profile.trace"
 mkdir -p "$ESP/EFI/BOOT"
 
 cd "$PROJECT_ROOT"
-echo "Building a symbolized profiling image..."
-CARGO_PROFILE_RELEASE_DEBUG=2 \
-RUSTFLAGS="${RUSTFLAGS:-} -C force-frame-pointers=yes -C force-unwind-tables=yes" \
+echo "Building a manually instrumented profiling image..."
 cargo "+$RUST_TOOLCHAIN" build --release --target x86_64-unknown-uefi \
     --features uefi-bin,profiling
 cp target/x86_64-unknown-uefi/release/agnostos.efi "$ESP/EFI/BOOT/BOOTX64.EFI"
 
-echo "Starting AgnostOS. Sampling begins automatically during kernel startup."
-echo "Type 'shutdown' in the guest to save the samples and exit QEMU."
-set +e
-qemu-system-x86_64 \
-    -bios ./bios/OVMF.4m.fd \
-    -drive "format=raw,file=fat:rw:$ESP" \
-    -chardev "file,id=profiletrace,path=$TRACE" \
-    -device isa-debugcon,iobase=0xe9,chardev=profiletrace \
-    -device isa-debug-exit,iobase=0xf4,iosize=0x04
-QEMU_STATUS=$?
-set -e
+echo "Starting AgnostOS headlessly and profiling annotated modules."
+python3 "$SCRIPT_DIR/profile-guest.py" \
+    --esp "$ESP" --trace "$TRACE" "$@"
 
 if [[ ! -f "$TRACE" ]] || ! grep -q '^AGNOSTOS_PROFILE_END$' "$TRACE"; then
-    echo "No complete profile was exported. Shut down from the guest with 'shutdown'." >&2
+    echo "No complete profile was exported by the automated guest run." >&2
     exit 1
 fi
 
 python3 "$SCRIPT_DIR/render-flamegraph.py" \
-    "$TRACE" target/x86_64-unknown-uefi/release/agnostos.pdb "$OUTPUT"
-echo "Created $OUTPUT (QEMU exit status: $QEMU_STATUS)"
+    "$TRACE" "$OUTPUT"
+echo "Created $OUTPUT"

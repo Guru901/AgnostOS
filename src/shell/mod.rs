@@ -16,7 +16,6 @@ use crate::{
     commands::run_command,
     console,
     keyboard::{self, KEYBOARD_DROPPED, KeyboardEvent},
-    kprint, kprintln,
     task::TaskAction,
     timer::ticks,
 };
@@ -80,6 +79,8 @@ pub fn init() -> ! {
 
     kprint!("{PROMPT}");
     console::draw_cursor();
+    #[cfg(feature = "profiling")]
+    crate::profiling::guest_ready();
     #[cfg(feature = "mouse")]
     crate::interrupts::enable_mouse();
 

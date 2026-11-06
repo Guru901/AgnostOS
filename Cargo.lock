@@ -6,6 +6,7 @@ version = 4
 name = "agnostos"
 version = "0.1.0"
 dependencies = [
+ "agnostos-profile-macro",
  "linked_list_allocator",
  "noto-sans-mono-bitmap",
  "pc-keyboard",
@@ -15,6 +16,10 @@ dependencies = [
  "uefi",
  "x86_64",
 ]
+
+[[package]]
+name = "agnostos-profile-macro"
+version = "0.1.0"
 
 [[package]]
 name = "bit_field"

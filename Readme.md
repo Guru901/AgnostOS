@@ -11,7 +11,6 @@ You will need:
 - A recent Rust toolchain with Cargo and `rustup`.
 - The `x86_64-unknown-uefi` Rust target.
 - QEMU with the `qemu-system-x86_64` executable available on your `PATH`.
-- LLVM's `llvm-pdbutil` for resolving UEFI guest symbols when profiling.
 - Bash to run the provided build script.
 
 Install the pinned nightly toolchain and its UEFI target once:
@@ -56,12 +55,31 @@ Run the profiling build from the repository root:
 ./scripts/profile.sh
 ```
 
-Sampling starts automatically during kernel startup and continues while the OS
-runs. Type `shutdown` in the guest to export the samples and exit QEMU. The
-script resolves the captured guest stacks with the matching PDB symbols and
-writes `flamegraph.html` in the repository root. Pass a different output path
-as the first argument if desired. The default buffer holds about five minutes
-of samples at 100 Hz.
+The script runs QEMU headlessly, waits for the shell-ready signal, types a
+default command set (`taskinfo`, `uptime`, `history`, `font 24`), sends
+`shutdown`, and renders the report. Functions in modules marked with
+`profiled_module` are recorded. The output defaults to `flamegraph.html` in the
+repository root. Pass a different output path first and override the commands
+with repeated `--command` options:
+
+```sh
+./scripts/profile.sh /tmp/boot-profile.html --command taskinfo --command uptime --command "font 24"
+```
+
+For an external module file, use `profiled_module` on its declaration to
+instrument all functions in that file when profiling is enabled:
+
+```rust
+#[cfg_attr(
+    feature = "profiling",
+    agnostos_profile_macro::profiled_module("src/console/mod.rs")
+)]
+pub mod console;
+```
+
+Exclude individual functions with
+`#[cfg_attr(feature = "profiling", agnostos_profile_macro::not_profiled)]`.
+The file path is relative to the crate root. `const fn` bodies are left alone.
 
 To package the UEFI executable as a bootable UEFI ISO:
 

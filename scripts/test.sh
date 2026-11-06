@@ -13,7 +13,7 @@ trap 'rm -rf "$TEST_WORKDIR"' EXIT
 # directories, even when invoked from another working directory. Host tests
 # must therefore run from a clean copy that does not contain `.cargo`.
 cp "$PROJECT_ROOT/Cargo.toml" "$PROJECT_ROOT/Cargo.lock" "$TEST_WORKDIR/"
-cp -R "$PROJECT_ROOT/src" "$PROJECT_ROOT/tests" "$TEST_WORKDIR/"
+cp -R "$PROJECT_ROOT/src" "$PROJECT_ROOT/tests" "$PROJECT_ROOT/profile-macro" "$TEST_WORKDIR/"
 
 if ! command -v cargo >/dev/null 2>&1; then
     echo "Error: cargo is not installed or is not in your PATH."

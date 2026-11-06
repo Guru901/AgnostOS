@@ -1,8 +1,24 @@
 //! Framebuffer access, primitive drawing, and bitmap text rendering.
 
+#[cfg_attr(
+    feature = "profiling",
+    agnostos_profile_macro::profiled_module("src/graphics/drawing.rs")
+)]
 mod drawing;
+#[cfg_attr(
+    feature = "profiling",
+    agnostos_profile_macro::profiled_module("src/graphics/framebuffer.rs")
+)]
 mod framebuffer;
+#[cfg_attr(
+    feature = "profiling",
+    agnostos_profile_macro::profiled_module("src/graphics/pixel.rs")
+)]
 pub mod pixel;
+#[cfg_attr(
+    feature = "profiling",
+    agnostos_profile_macro::profiled_module("src/graphics/text.rs")
+)]
 mod text;
 
 pub use drawing::{clear_background, draw_circle, draw_line, draw_rec, scroll_up};

@@ -5,7 +5,6 @@
 //! sequence here makes its ordering explicit and gives future subsystems one
 //! place to add initialization dependencies.
 
-use crate::kprintln;
 #[cfg(not(feature = "fault-smoke"))]
 use crate::shell;
 use crate::{allocator, console, graphics::Framebuffer, interrupts, paging, uefi_graphics};
@@ -62,8 +61,6 @@ pub fn initialize() -> Status {
         fatal("page-table initialization failed", error);
     }
 
-    #[cfg(feature = "profiling")]
-    crate::profiling::initialize(kernel_image.0, kernel_image.1);
     interrupts::init();
     #[cfg(feature = "input-smoke")]
     crate::input_smoke::ready();

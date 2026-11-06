@@ -10,6 +10,7 @@ use crate::{TICKS, platform};
 use core::{hint::spin_loop, sync::atomic::Ordering};
 
 /// PIT IRQs observed since kernel init.
+#[cfg_attr(feature = "profiling", agnostos_profile_macro::not_profiled)]
 pub(crate) fn ticks() -> u64 {
     TICKS.load(Ordering::Relaxed)
 }

@@ -8,7 +8,6 @@ use uefi::{
 
 /// Initializes the UEFI Graphics Output Protocol using the largest available
 /// display mode up to 1920×1080.
-///
 pub fn init_gop() -> uefi::Result<ScopedProtocol<GraphicsOutput>> {
     let gop_handle = boot::get_handle_for_protocol::<GraphicsOutput>()?;
 

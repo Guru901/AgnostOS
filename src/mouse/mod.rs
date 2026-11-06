@@ -185,6 +185,7 @@ pub(crate) fn pop_mouse_byte() -> Option<MouseByte> {
 ///
 /// Call this with interrupts disabled when using the result to decide whether
 /// to sleep. That makes the check atomic with respect to the IRQ producer.
+#[cfg_attr(feature = "profiling", agnostos_profile_macro::not_profiled)]
 pub(crate) fn mouse_queue_is_empty() -> bool {
     // SAFETY: initialization completes before interrupts are enabled. The
     // shell calls this with interrupts disabled, so the IRQ producer cannot
@@ -263,6 +264,7 @@ fn decode_packet(packet: [u8; 3]) -> Option<MouseEvent> {
     })
 }
 
+#[cfg_attr(feature = "profiling", agnostos_profile_macro::not_profiled)]
 pub(crate) fn poll() -> Option<MouseEvent> {
     let byte = pop_mouse_byte()?.get();
     let mut state = PACKET_STATE.lock();
