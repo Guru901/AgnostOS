@@ -95,11 +95,12 @@ def render(trace, output):
             f'<span>{html.escape(name)}</span></button>'
         )
         cursor = x
+        child_weight = sum(nodes[child_id]["weight"] for child_id in node["children"])
         for child_id in sorted(
             node["children"], key=lambda child: (-nodes[child]["weight"], nodes[child]["name"])
         ):
             child = nodes[child_id]
-            child_width = width * child["weight"] / max(node["weight"], 1)
+            child_width = width * child["weight"] / max(child_weight, 1)
             emit_frame(child_id, cursor, y - row_height, child_width, depth + 1)
             cursor += child_width
 
@@ -107,9 +108,10 @@ def render(trace, output):
         nodes[0]["children"], key=lambda child: (-nodes[child]["weight"], nodes[child]["name"])
     )
     cursor = 0.0
+    root_weight = sum(nodes[node_id]["weight"] for node_id in root_children)
     for node_id in root_children:
         node = nodes[node_id]
-        width = node["weight"] / max(total, 1)
+        width = node["weight"] / max(root_weight, 1)
         emit_frame(node_id, cursor, chart_height - row_height, width, 0)
         cursor += width
 
@@ -187,8 +189,9 @@ function place(node,x,y,width,depth){{
   frame.style.top=y+'px';frame.style.background=colors[depth%colors.length];
   let cursor=x;
   const children=node.children.map(id=>nodes[id]).sort((a,b)=>b.weight-a.weight||a.name.localeCompare(b.name));
+  const childWeight=children.reduce((sum,child)=>sum+child.weight,0);
   for(const child of children){{
-    const childWidth=width*child.weight/Math.max(node.weight,1);
+    const childWidth=width*child.weight/Math.max(childWeight,1);
     place(child,cursor,y-rowHeight,childWidth,depth+1);cursor+=childWidth;
   }}
 }}
@@ -202,8 +205,9 @@ function reset(){{
   for(const frame of frames)frame.style.display='';
   let cursor=0;
   const children=nodes[0].children.map(id=>nodes[id]).sort((a,b)=>b.weight-a.weight||a.name.localeCompare(b.name));
+  const rootWeight=children.reduce((sum,child)=>sum+child.weight,0);
   for(const child of children){{
-    const width=child.weight/Math.max(nodes[0].weight,1);
+    const width=child.weight/Math.max(rootWeight,1);
     place(child,cursor,chart.clientHeight-rowHeight,width,0);cursor+=width;
   }}
   hint.textContent='Showing the full call tree';
