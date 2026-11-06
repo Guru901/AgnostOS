@@ -232,7 +232,13 @@ fn scope_context(tokens: &[TokenTree], group_index: usize) -> Option<String> {
         matches!(token, TokenTree::Ident(ident)
             if ident.to_string() == "impl" || ident.to_string() == "trait")
     })?;
-    Some(window[offset..].iter().cloned().collect::<TokenStream>().to_string())
+    Some(
+        window[offset..]
+            .iter()
+            .cloned()
+            .collect::<TokenStream>()
+            .to_string(),
+    )
 }
 
 /// Instrument function bodies in a scope while preserving method context.
