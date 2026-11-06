@@ -1,10 +1,382 @@
 //! Allocation-free building blocks for the kernel network stack.
 //!
 //! The first protocols are Ethernet, ARP for IPv4 over Ethernet, and IPv4.
-//! This module deliberately stops at packet handling: a network device driver
-//! can hand received frames to these types and transmit the resulting bytes.
+//! The network path currently targets a polling RTL8139 device. QEMU user-mode
+//! networking uses a fixed local address and gateway configured below.
 
-use core::convert::TryInto;
+use core::{convert::TryInto, net::Ipv4Addr};
+use spin::Mutex;
+
+mod pci;
+mod rtl8139;
+
+const LOCAL_IPV4: [u8; 4] = [10, 0, 2, 15];
+const GATEWAY_IPV4: [u8; 4] = [10, 0, 2, 2];
+const DNS_IPV4: [u8; 4] = [10, 0, 2, 3];
+const SUBNET_MASK: [u8; 4] = [255, 255, 255, 0];
+const PING_ID: u16 = 0x4147;
+const MAX_FRAME_LEN: usize = 1536;
+const ECHO_DATA: &[u8] = b"agnostos ping";
+const DNS_PORT: u16 = 53000;
+const DNS_QUERY_ID: u16 = 0x4e53;
+
+#[derive(Clone, Copy)]
+struct NetworkConfig {
+    mac: MacAddress,
+    learned_ip: [u8; 4],
+    learned_mac: MacAddress,
+}
+
+static NETWORK: Mutex<Option<NetworkConfig>> = Mutex::new(None);
+
+/// Why a network operation could not be completed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NetworkError {
+    /// No supported network interface was initialized.
+    InterfaceUnavailable,
+    /// The NIC or packet path failed while sending/receiving.
+    DeviceFailure,
+    /// No ARP response arrived for the next-hop address.
+    AddressResolutionTimeout,
+    /// No matching ICMP echo reply arrived before the timeout.
+    EchoTimeout,
+    /// The configured DNS server did not return an IPv4 answer.
+    DnsFailure,
+}
+
+/// Initialize the polling NIC and the QEMU user-network interface defaults.
+pub fn initialize() -> Result<MacAddress, NetworkError> {
+    let mac = match rtl8139::initialize() {
+        Ok(mac) => mac,
+        Err(rtl8139::DriverError::NotFound) => return Err(NetworkError::InterfaceUnavailable),
+        Err(_) => return Err(NetworkError::DeviceFailure),
+    };
+    *NETWORK.lock() = Some(NetworkConfig {
+        mac,
+        learned_ip: [0; 4],
+        learned_mac: MacAddress::default(),
+    });
+    Ok(mac)
+}
+
+/// Send one ICMP echo request and wait for its matching reply.
+pub fn ping(destination: Ipv4Addr, sequence: u16, timeout_ms: u64) -> Result<u64, NetworkError> {
+    let destination = destination.octets();
+    let config = NETWORK
+        .lock()
+        .as_ref()
+        .copied()
+        .ok_or(NetworkError::InterfaceUnavailable)?;
+    let next_hop = if same_subnet(destination, LOCAL_IPV4) {
+        destination
+    } else {
+        GATEWAY_IPV4
+    };
+    let destination_mac = resolve_address(next_hop, config)?;
+
+    let mut icmp = [0u8; ICMPV4_ECHO_HEADER_LEN + ECHO_DATA.len()];
+    let echo = Icmpv4Echo {
+        message_type: 8,
+        identifier: PING_ID,
+        sequence,
+        payload: ECHO_DATA,
+    };
+    let icmp_len = echo
+        .write(&mut icmp)
+        .map_err(|_| NetworkError::DeviceFailure)?;
+    let mut ipv4 = [0u8; IPV4_MIN_HEADER_LEN + ICMPV4_ECHO_HEADER_LEN + ECHO_DATA.len()];
+    let ipv4_len = Ipv4Packet::write(LOCAL_IPV4, destination, 64, 1, &icmp[..icmp_len], &mut ipv4)
+        .map_err(|_| NetworkError::DeviceFailure)?;
+    transmit_frame(
+        config.mac,
+        destination_mac,
+        EtherType::Ipv4,
+        &ipv4[..ipv4_len],
+    )?;
+
+    let started = crate::timer::uptime_ms();
+    let deadline = started.saturating_add(timeout_ms.max(1));
+    let mut frame_buffer = [0u8; MAX_FRAME_LEN];
+    while crate::timer::uptime_ms() <= deadline {
+        if let Some(NetEvent::EchoReply(source, reply_id, reply_sequence)) =
+            receive_and_process(config, &mut frame_buffer)?
+        {
+            if source == destination && reply_id == PING_ID && reply_sequence == sequence {
+                return Ok(crate::timer::uptime_ms().saturating_sub(started));
+            }
+        }
+        core::hint::spin_loop();
+    }
+    Err(NetworkError::EchoTimeout)
+}
+
+/// Resolve a hostname through the DNS server supplied by QEMU user networking.
+pub fn resolve_hostname(hostname: &str) -> Result<Ipv4Addr, NetworkError> {
+    let config = NETWORK
+        .lock()
+        .as_ref()
+        .copied()
+        .ok_or(NetworkError::InterfaceUnavailable)?;
+    let destination_mac = resolve_address(DNS_IPV4, config)?;
+
+    let mut dns = [0u8; 512];
+    let dns_len = build_dns_query(hostname, DNS_QUERY_ID, &mut dns)?;
+    let mut udp = [0u8; 520];
+    let udp_len = UdpDatagram::write(DNS_PORT, 53, &dns[..dns_len], &mut udp)
+        .map_err(|_| NetworkError::DnsFailure)?;
+    let mut ipv4 = [0u8; IPV4_MIN_HEADER_LEN + 520];
+    let ipv4_len = Ipv4Packet::write(LOCAL_IPV4, DNS_IPV4, 64, 17, &udp[..udp_len], &mut ipv4)
+        .map_err(|_| NetworkError::DnsFailure)?;
+    transmit_frame(
+        config.mac,
+        destination_mac,
+        EtherType::Ipv4,
+        &ipv4[..ipv4_len],
+    )?;
+
+    let deadline = crate::timer::uptime_ms().saturating_add(3_000);
+    let mut frame_buffer = [0u8; MAX_FRAME_LEN];
+    while crate::timer::uptime_ms() <= deadline {
+        if let Some(NetEvent::DnsReply(address)) = receive_and_process(config, &mut frame_buffer)? {
+            return address.map(Ipv4Addr::from).ok_or(NetworkError::DnsFailure);
+        }
+        core::hint::spin_loop();
+    }
+    Err(NetworkError::DnsFailure)
+}
+
+fn build_dns_query(
+    hostname: &str,
+    transaction_id: u16,
+    out: &mut [u8],
+) -> Result<usize, NetworkError> {
+    if hostname.is_empty() || hostname.len() > 253 || out.len() < 17 {
+        return Err(NetworkError::DnsFailure);
+    }
+    out[..12].fill(0);
+    out[0..2].copy_from_slice(&transaction_id.to_be_bytes());
+    out[2..4].copy_from_slice(&0x0100u16.to_be_bytes()); // recursion desired
+    out[4..6].copy_from_slice(&1u16.to_be_bytes()); // one question
+    let mut cursor = 12;
+    for label in hostname.split('.') {
+        if label.is_empty() || label.len() > 63 || cursor + label.len() + 5 > out.len() {
+            return Err(NetworkError::DnsFailure);
+        }
+        out[cursor] = label.len() as u8;
+        cursor += 1;
+        out[cursor..cursor + label.len()].copy_from_slice(label.as_bytes());
+        cursor += label.len();
+    }
+    out[cursor] = 0;
+    cursor += 1;
+    out[cursor..cursor + 2].copy_from_slice(&1u16.to_be_bytes()); // A
+    out[cursor + 2..cursor + 4].copy_from_slice(&1u16.to_be_bytes()); // IN
+    Ok(cursor + 4)
+}
+
+fn parse_dns_a_response(bytes: &[u8], transaction_id: u16) -> Option<[u8; 4]> {
+    if bytes.len() < 12
+        || u16::from_be_bytes([bytes[0], bytes[1]]) != transaction_id
+        || bytes[2] & 0x80 == 0
+        || bytes[3] & 0x0f != 0
+    {
+        return None;
+    }
+    let questions = usize::from(u16::from_be_bytes([bytes[4], bytes[5]]));
+    let answers = usize::from(u16::from_be_bytes([bytes[6], bytes[7]]));
+    let mut cursor = 12;
+    for _ in 0..questions {
+        cursor = skip_dns_name(bytes, cursor)?;
+        cursor = cursor.checked_add(4)?; // QTYPE + QCLASS
+        if cursor > bytes.len() {
+            return None;
+        }
+    }
+    for _ in 0..answers {
+        cursor = skip_dns_name(bytes, cursor)?;
+        if cursor + 10 > bytes.len() {
+            return None;
+        }
+        let kind = u16::from_be_bytes([bytes[cursor], bytes[cursor + 1]]);
+        let class = u16::from_be_bytes([bytes[cursor + 2], bytes[cursor + 3]]);
+        let length = usize::from(u16::from_be_bytes([bytes[cursor + 8], bytes[cursor + 9]]));
+        cursor += 10;
+        if cursor + length > bytes.len() {
+            return None;
+        }
+        if kind == 1 && class == 1 && length == 4 {
+            return Some(bytes[cursor..cursor + 4].try_into().ok()?);
+        }
+        cursor += length;
+    }
+    None
+}
+
+fn skip_dns_name(bytes: &[u8], mut cursor: usize) -> Option<usize> {
+    loop {
+        let length = usize::from(*bytes.get(cursor)?);
+        if length & 0xc0 == 0xc0 {
+            if bytes.get(cursor + 1).is_none() {
+                return None;
+            }
+            return Some(cursor + 2);
+        }
+        if length & 0xc0 != 0 {
+            return None;
+        }
+        cursor += 1;
+        if length == 0 {
+            return Some(cursor);
+        }
+        cursor = cursor.checked_add(length)?;
+        if cursor > bytes.len() {
+            return None;
+        }
+    }
+}
+
+fn same_subnet(left: [u8; 4], right: [u8; 4]) -> bool {
+    (0..4).all(|i| left[i] & SUBNET_MASK[i] == right[i] & SUBNET_MASK[i])
+}
+
+fn resolve_address(address: [u8; 4], config: NetworkConfig) -> Result<MacAddress, NetworkError> {
+    {
+        let state = NETWORK.lock();
+        if let Some(state) = *state
+            && state.learned_ip == address
+        {
+            return Ok(state.learned_mac);
+        }
+    }
+
+    let request = ArpPacket {
+        operation: ArpOperation::Request,
+        sender_hardware: config.mac,
+        sender_protocol: LOCAL_IPV4,
+        target_hardware: MacAddress::default(),
+        target_protocol: address,
+    };
+    let mut arp = [0u8; ARP_PACKET_LEN];
+    request
+        .write(&mut arp)
+        .map_err(|_| NetworkError::DeviceFailure)?;
+    transmit_frame(config.mac, ETHERNET_BROADCAST, EtherType::Arp, &arp)?;
+
+    let deadline = crate::timer::uptime_ms().saturating_add(1_000);
+    let mut frame_buffer = [0u8; MAX_FRAME_LEN];
+    while crate::timer::uptime_ms() <= deadline {
+        let _ = receive_and_process(config, &mut frame_buffer)?;
+        let state = NETWORK.lock();
+        if let Some(state) = *state
+            && state.learned_ip == address
+        {
+            return Ok(state.learned_mac);
+        }
+        core::hint::spin_loop();
+    }
+    Err(NetworkError::AddressResolutionTimeout)
+}
+
+fn transmit_frame(
+    source: MacAddress,
+    destination: MacAddress,
+    ether_type: EtherType,
+    payload: &[u8],
+) -> Result<(), NetworkError> {
+    let mut frame = [0u8; MAX_FRAME_LEN];
+    let frame_packet = EthernetFrame {
+        destination,
+        source,
+        ether_type,
+        payload,
+    };
+    let length = frame_packet
+        .write(&mut frame)
+        .map_err(|_| NetworkError::DeviceFailure)?;
+    let length = length.max(60);
+    rtl8139::transmit(&frame[..length]).map_err(|_| NetworkError::DeviceFailure)
+}
+
+fn receive_and_process(
+    config: NetworkConfig,
+    frame_buffer: &mut [u8; MAX_FRAME_LEN],
+) -> Result<Option<NetEvent>, NetworkError> {
+    let Some(length) = rtl8139::receive(frame_buffer).map_err(|_| NetworkError::DeviceFailure)?
+    else {
+        return Ok(None);
+    };
+    let Ok(frame) = EthernetFrame::parse(&frame_buffer[..length]) else {
+        return Ok(None);
+    };
+    match frame.ether_type {
+        EtherType::Arp => {
+            if let Ok(packet) = ArpPacket::parse(frame.payload) {
+                if packet.sender_protocol != [0; 4] {
+                    let mut state = NETWORK.lock();
+                    if let Some(state) = state.as_mut() {
+                        state.learned_ip = packet.sender_protocol;
+                        state.learned_mac = packet.sender_hardware;
+                    }
+                }
+                if packet.operation == ArpOperation::Request && packet.target_protocol == LOCAL_IPV4
+                {
+                    let reply = ArpPacket {
+                        operation: ArpOperation::Reply,
+                        sender_hardware: config.mac,
+                        sender_protocol: LOCAL_IPV4,
+                        target_hardware: packet.sender_hardware,
+                        target_protocol: packet.sender_protocol,
+                    };
+                    let mut bytes = [0u8; ARP_PACKET_LEN];
+                    reply
+                        .write(&mut bytes)
+                        .map_err(|_| NetworkError::DeviceFailure)?;
+                    transmit_frame(config.mac, packet.sender_hardware, EtherType::Arp, &bytes)?;
+                }
+            }
+        }
+        EtherType::Ipv4 => {
+            let Ok(packet) = Ipv4Packet::parse(frame.payload) else {
+                return Ok(None);
+            };
+            if packet.destination != LOCAL_IPV4 {
+                return Ok(None);
+            }
+            match packet.protocol {
+                1 => {
+                    if let Ok(echo) = Icmpv4Echo::parse(packet.payload)
+                        && echo.message_type == 0
+                    {
+                        return Ok(Some(NetEvent::EchoReply(
+                            packet.source,
+                            echo.identifier,
+                            echo.sequence,
+                        )));
+                    }
+                }
+                17 => {
+                    if let Ok(udp) = UdpDatagram::parse(packet.payload)
+                        && udp.destination_port == DNS_PORT
+                    {
+                        return Ok(Some(NetEvent::DnsReply(parse_dns_a_response(
+                            udp.payload,
+                            DNS_QUERY_ID,
+                        ))));
+                    }
+                }
+                _ => {}
+            }
+        }
+        EtherType::Other(_) => {}
+    }
+    Ok(None)
+}
+
+#[derive(Clone, Copy)]
+enum NetEvent {
+    EchoReply([u8; 4], u16, u16),
+    DnsReply(Option<[u8; 4]>),
+}
 
 /// The Ethernet broadcast address.
 pub const ETHERNET_BROADCAST: MacAddress = MacAddress([0xff; 6]);
@@ -304,6 +676,57 @@ pub struct Icmpv4Echo<'a> {
     pub sequence: u16,
     /// Echo data.
     pub payload: &'a [u8],
+}
+
+/// Borrowed UDP datagram with ports and a validated declared length.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UdpDatagram<'a> {
+    /// Sender port.
+    pub source_port: u16,
+    /// Recipient port.
+    pub destination_port: u16,
+    /// UDP payload.
+    pub payload: &'a [u8],
+}
+
+impl<'a> UdpDatagram<'a> {
+    /// Parse a UDP datagram, allowing an IPv4 zero checksum.
+    pub fn parse(bytes: &'a [u8]) -> Result<Self, PacketError> {
+        if bytes.len() < 8 {
+            return Err(PacketError::Truncated);
+        }
+        let length = usize::from(u16::from_be_bytes([bytes[4], bytes[5]]));
+        if length < 8 || bytes.len() < length {
+            return Err(PacketError::Truncated);
+        }
+        Ok(Self {
+            source_port: u16::from_be_bytes([bytes[0], bytes[1]]),
+            destination_port: u16::from_be_bytes([bytes[2], bytes[3]]),
+            payload: &bytes[8..length],
+        })
+    }
+
+    /// Serialize a UDP datagram using the permitted zero IPv4 checksum.
+    pub fn write(
+        source_port: u16,
+        destination_port: u16,
+        payload: &[u8],
+        out: &mut [u8],
+    ) -> Result<usize, PacketError> {
+        let length = 8usize
+            .checked_add(payload.len())
+            .filter(|&length| length <= usize::from(u16::MAX))
+            .ok_or(PacketError::BufferTooSmall)?;
+        if out.len() < length {
+            return Err(PacketError::BufferTooSmall);
+        }
+        out[..8].fill(0);
+        out[0..2].copy_from_slice(&source_port.to_be_bytes());
+        out[2..4].copy_from_slice(&destination_port.to_be_bytes());
+        out[4..6].copy_from_slice(&(length as u16).to_be_bytes());
+        out[8..length].copy_from_slice(payload);
+        Ok(length)
+    }
 }
 
 impl<'a> Icmpv4Echo<'a> {
