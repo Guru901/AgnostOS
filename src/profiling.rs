@@ -4,15 +4,22 @@
 //! The tree is exported on shutdown, avoiding an event log that grows with
 //! every repeated call.
 
+#[cfg(target_os = "uefi")]
+use core::sync::atomic::AtomicBool;
+#[cfg(target_os = "uefi")]
 use core::{
     cell::UnsafeCell,
     sync::atomic::{AtomicU32, AtomicUsize, Ordering},
 };
 
+#[cfg(target_os = "uefi")]
 const NODE_CAPACITY: usize = 16_384;
+#[cfg(target_os = "uefi")]
 const ROOT: u32 = 0;
+#[cfg(target_os = "uefi")]
 const NO_NODE: u32 = u32::MAX;
 
+#[cfg(target_os = "uefi")]
 #[derive(Clone, Copy)]
 struct Node {
     name: &'static str,
@@ -22,6 +29,7 @@ struct Node {
     calls: u64,
 }
 
+#[cfg(target_os = "uefi")]
 impl Node {
     const EMPTY: Self = Self {
         name: "",
@@ -32,13 +40,21 @@ impl Node {
     };
 }
 
+#[cfg(target_os = "uefi")]
 struct NodeBuffer(UnsafeCell<[Node; NODE_CAPACITY]>);
+#[cfg(target_os = "uefi")]
 unsafe impl Sync for NodeBuffer {}
 
+#[cfg(target_os = "uefi")]
 static NODES: NodeBuffer = NodeBuffer(UnsafeCell::new([Node::EMPTY; NODE_CAPACITY]));
+#[cfg(target_os = "uefi")]
 static NODE_COUNT: AtomicUsize = AtomicUsize::new(1);
+#[cfg(target_os = "uefi")]
 static CURRENT_NODE: AtomicU32 = AtomicU32::new(ROOT);
+#[cfg(target_os = "uefi")]
 static DROPPED_PATHS: AtomicUsize = AtomicUsize::new(0);
+#[cfg(target_os = "uefi")]
+static RECORDING: AtomicBool = AtomicBool::new(true);
 
 /// Signals that the shell is ready to receive automated QEMU input.
 #[agnostos_profile_macro::not_profiled]
@@ -55,62 +71,96 @@ pub(crate) fn guest_ready() {
 /// Adds one call to the aggregate tree and restores the previous caller on drop.
 #[agnostos_profile_macro::not_profiled]
 pub(crate) fn enter(name: &'static str) -> ProfileGuard {
-    let interrupts_were_enabled = x86_64::instructions::interrupts::are_enabled();
-    x86_64::instructions::interrupts::disable();
+    #[cfg(not(target_os = "uefi"))]
+    {
+        let _ = name;
+        return ProfileGuard {};
+    }
 
-    let parent = CURRENT_NODE.load(Ordering::Relaxed);
-    let current = if parent == NO_NODE {
-        NO_NODE
-    } else {
-        // SAFETY: Interrupts are disabled and the kernel is single-core; this
-        // mutation cannot overlap another profile-tree update.
-        let nodes = unsafe { &mut *NODES.0.get() };
-        let mut child = nodes[parent as usize].first_child;
-        while child != NO_NODE && nodes[child as usize].name != name {
-            child = nodes[child as usize].next_sibling;
+    #[cfg(target_os = "uefi")]
+    {
+        if !RECORDING.load(Ordering::Relaxed) {
+            return ProfileGuard {
+                previous: ROOT,
+                active: false,
+            };
         }
-        if child != NO_NODE {
-            nodes[child as usize].calls = nodes[child as usize].calls.saturating_add(1);
-            child
+        let interrupts_were_enabled = x86_64::instructions::interrupts::are_enabled();
+        x86_64::instructions::interrupts::disable();
+        if !RECORDING.load(Ordering::Relaxed) {
+            restore_interrupts(interrupts_were_enabled);
+            return ProfileGuard {
+                previous: ROOT,
+                active: false,
+            };
+        }
+
+        let parent = CURRENT_NODE.load(Ordering::Relaxed);
+        let current = if parent == NO_NODE {
+            NO_NODE
         } else {
-            let index = NODE_COUNT.load(Ordering::Relaxed);
-            if index >= NODE_CAPACITY {
-                DROPPED_PATHS.fetch_add(1, Ordering::Relaxed);
-                NO_NODE
-            } else {
-                nodes[index] = Node {
-                    name,
-                    parent,
-                    first_child: NO_NODE,
-                    next_sibling: nodes[parent as usize].first_child,
-                    calls: 1,
-                };
-                nodes[parent as usize].first_child = index as u32;
-                NODE_COUNT.store(index + 1, Ordering::Relaxed);
-                index as u32
+            // SAFETY: Interrupts are disabled and the kernel is single-core; this
+            // mutation cannot overlap another profile-tree update.
+            let nodes = unsafe { &mut *NODES.0.get() };
+            let mut child = nodes[parent as usize].first_child;
+            while child != NO_NODE && nodes[child as usize].name != name {
+                child = nodes[child as usize].next_sibling;
             }
+            if child != NO_NODE {
+                nodes[child as usize].calls = nodes[child as usize].calls.saturating_add(1);
+                child
+            } else {
+                let index = NODE_COUNT.load(Ordering::Relaxed);
+                if index >= NODE_CAPACITY {
+                    DROPPED_PATHS.fetch_add(1, Ordering::Relaxed);
+                    NO_NODE
+                } else {
+                    nodes[index] = Node {
+                        name,
+                        parent,
+                        first_child: NO_NODE,
+                        next_sibling: nodes[parent as usize].first_child,
+                        calls: 1,
+                    };
+                    nodes[parent as usize].first_child = index as u32;
+                    NODE_COUNT.store(index + 1, Ordering::Relaxed);
+                    index as u32
+                }
+            }
+        };
+        CURRENT_NODE.store(current, Ordering::Relaxed);
+        restore_interrupts(interrupts_were_enabled);
+        ProfileGuard {
+            previous: parent,
+            active: true,
         }
-    };
-    CURRENT_NODE.store(current, Ordering::Relaxed);
-    restore_interrupts(interrupts_were_enabled);
-    ProfileGuard { previous: parent }
+    }
 }
 
 pub(crate) struct ProfileGuard {
+    #[cfg(target_os = "uefi")]
     previous: u32,
+    #[cfg(target_os = "uefi")]
+    active: bool,
 }
 
 impl Drop for ProfileGuard {
     #[agnostos_profile_macro::not_profiled]
+    /// Restore the caller node when the profiled function returns.
     fn drop(&mut self) {
-        let interrupts_were_enabled = x86_64::instructions::interrupts::are_enabled();
-        x86_64::instructions::interrupts::disable();
-        CURRENT_NODE.store(self.previous, Ordering::Relaxed);
-        restore_interrupts(interrupts_were_enabled);
+        #[cfg(target_os = "uefi")]
+        if self.active {
+            let interrupts_were_enabled = x86_64::instructions::interrupts::are_enabled();
+            x86_64::instructions::interrupts::disable();
+            CURRENT_NODE.store(self.previous, Ordering::Relaxed);
+            restore_interrupts(interrupts_were_enabled);
+        }
     }
 }
 
 #[agnostos_profile_macro::not_profiled]
+/// Re-enable interrupts only when they were enabled before a profile update.
+#[cfg(target_os = "uefi")]
 fn restore_interrupts(were_enabled: bool) {
     if were_enabled {
         x86_64::instructions::interrupts::enable();
@@ -120,52 +170,61 @@ fn restore_interrupts(were_enabled: bool) {
 /// Emits aggregate call-tree nodes over QEMU's debug console.
 #[agnostos_profile_macro::not_profiled]
 pub(crate) fn dump() {
-    use crate::interrupts::outb;
+    #[cfg(not(target_os = "uefi"))]
+    return;
 
-    x86_64::instructions::interrupts::disable();
-    write_bytes(b"AGNOSTOS_PROFILE_V2\n");
-    let count = NODE_COUNT.load(Ordering::Relaxed).min(NODE_CAPACITY);
-    let nodes = unsafe { &*NODES.0.get() };
-    for (index, node) in nodes.iter().enumerate().take(count).skip(1) {
-        write_bytes(b"N:");
-        write_decimal(index as u64);
-        write_bytes(b" ");
-        write_decimal(node.parent as u64);
-        write_bytes(b" ");
-        write_decimal(node.calls);
-        write_bytes(b" ");
-        write_bytes(node.name.as_bytes());
-        write_bytes(b"\n");
-    }
-    let dropped = DROPPED_PATHS.load(Ordering::Relaxed);
-    if dropped > 0 {
-        write_bytes(b"AGNOSTOS_PROFILE_DROPPED_PATHS=");
-        write_decimal(dropped as u64);
-        write_bytes(b"\n");
-    }
-    write_bytes(b"AGNOSTOS_PROFILE_END\n");
+    #[cfg(target_os = "uefi")]
+    {
+        use crate::interrupts::outb;
 
-    #[agnostos_profile_macro::not_profiled]
-    fn write_bytes(bytes: &[u8]) {
-        for byte in bytes {
-            // SAFETY: Port 0xe9 is the QEMU isa-debugcon device configured by
-            // scripts/profile.sh.
-            unsafe { outb(*byte, 0xe9) };
+        x86_64::instructions::interrupts::disable();
+        RECORDING.store(false, Ordering::Relaxed);
+        write_bytes(b"AGNOSTOS_PROFILE_V2\n");
+        let count = NODE_COUNT.load(Ordering::Relaxed).min(NODE_CAPACITY);
+        let nodes = unsafe { &*NODES.0.get() };
+        for (index, node) in nodes.iter().enumerate().take(count).skip(1) {
+            write_bytes(b"N:");
+            write_decimal(index as u64);
+            write_bytes(b" ");
+            write_decimal(node.parent as u64);
+            write_bytes(b" ");
+            write_decimal(node.calls);
+            write_bytes(b" ");
+            write_bytes(node.name.as_bytes());
+            write_bytes(b"\n");
         }
-    }
+        let dropped = DROPPED_PATHS.load(Ordering::Relaxed);
+        if dropped > 0 {
+            write_bytes(b"AGNOSTOS_PROFILE_DROPPED_PATHS=");
+            write_decimal(dropped as u64);
+            write_bytes(b"\n");
+        }
+        write_bytes(b"AGNOSTOS_PROFILE_END\n");
 
-    #[agnostos_profile_macro::not_profiled]
-    fn write_decimal(mut value: u64) {
-        let mut digits = [0u8; 20];
-        let mut cursor = digits.len();
-        loop {
-            cursor -= 1;
-            digits[cursor] = b'0' + (value % 10) as u8;
-            value /= 10;
-            if value == 0 {
-                break;
+        #[agnostos_profile_macro::not_profiled]
+        /// Write raw profile bytes to QEMU's debug-console port.
+        fn write_bytes(bytes: &[u8]) {
+            for byte in bytes {
+                // SAFETY: Port 0xe9 is the QEMU isa-debugcon device configured by
+                // scripts/profile.sh.
+                unsafe { outb(*byte, 0xe9) };
             }
         }
-        write_bytes(&digits[cursor..]);
+
+        #[agnostos_profile_macro::not_profiled]
+        /// Write a decimal integer without allocating during shutdown.
+        fn write_decimal(mut value: u64) {
+            let mut digits = [0u8; 20];
+            let mut cursor = digits.len();
+            loop {
+                cursor -= 1;
+                digits[cursor] = b'0' + (value % 10) as u8;
+                value /= 10;
+                if value == 0 {
+                    break;
+                }
+            }
+            write_bytes(&digits[cursor..]);
+        }
     }
 }

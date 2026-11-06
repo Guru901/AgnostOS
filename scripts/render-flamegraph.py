@@ -8,10 +8,12 @@ from pathlib import Path
 
 
 def fail(message):
+    """Exit with a profile parsing or rendering error."""
     raise SystemExit(message)
 
 
 def render(trace, output):
+    """Render an aggregate call-tree trace as a zoomable HTML flame graph."""
     lines = trace.read_text(errors="replace").splitlines()
     if "AGNOSTOS_PROFILE_V2" not in lines or "AGNOSTOS_PROFILE_END" not in lines:
         fail("profile trace is incomplete or has an unsupported format")
@@ -56,76 +58,93 @@ def render(trace, output):
             fail(f"call-tree node {node['id']} refers to missing parent {node['parent']}")
         parent["children"].append(node["id"])
 
-    def calculate_weight(node_id):
-        node = nodes[node_id]
-        node["weight"] = node["calls"] + sum(
-            calculate_weight(child_id) for child_id in node["children"]
-        )
-        return node["weight"]
+    validated = {0}
+    for node_id in nodes:
+        if node_id == 0 or node_id in validated:
+            continue
+        chain = []
+        chain_set = set()
+        current = node_id
+        while current not in validated:
+            if current in chain_set:
+                fail(f"call-tree parent cycle detected at node {current}")
+            chain.append(current)
+            chain_set.add(current)
+            current = nodes[current]["parent"]
+        validated.update(chain)
 
-    total = calculate_weight(0)
-    max_depth = 0
-
-    def measure_depth(node_id, depth=0):
-        nonlocal max_depth
+    order = []
+    depths = {0: 0}
+    pending = [0]
+    while pending:
+        node_id = pending.pop()
+        order.append(node_id)
         for child_id in nodes[node_id]["children"]:
-            max_depth = max(max_depth, depth + 1)
-            measure_depth(child_id, depth + 1)
-
-    measure_depth(0)
+            depths[child_id] = depths[node_id] + 1
+            pending.append(child_id)
+    max_depth = max(depths.values(), default=0)
+    for node_id in reversed(order):
+        nodes[node_id]["weight"] = nodes[node_id]["calls"] + sum(
+            nodes[child_id]["weight"] for child_id in nodes[node_id]["children"]
+        )
+    total = nodes[0]["weight"]
     row_height = 26
     frame_height = 24
     chart_height = max(max_depth, 1) * row_height
     colors = ("#f2c14e", "#f78154", "#e85d75", "#c44569", "#f4a261")
     frames = []
     def emit_frame(node_id, x, y, width, depth):
+        """Emit one frame and its descendants in flame-graph order."""
         node = nodes[node_id]
-        name = node["name"]
-        call_word = "call" if node["calls"] == 1 else "calls"
-        subtree_word = "call" if node["weight"] == 1 else "calls"
-        title = html.escape(
-            f"{name} — {node['calls']:,} {call_word}, "
-            f"{node['weight']:,} {subtree_word} in subtree"
-        )
-        frames.append(
-            f'<button type="button" class="frame" id="frame-{node_id}" '
-            f'data-node="{node_id}" title="{title}" '
-            f'style="left:{x * 100:.6f}%;width:{width * 100:.6f}%;top:{y}px;'
-            f'height:{frame_height}px;background:{colors[depth % len(colors)]}">'
-            f'<span>{html.escape(name)}</span></button>'
-        )
-        cursor = x
-        child_weight = sum(nodes[child_id]["weight"] for child_id in node["children"])
-        for child_id in sorted(
-            node["children"], key=lambda child: (-nodes[child]["weight"], nodes[child]["name"])
-        ):
-            child = nodes[child_id]
-            child_width = width * child["weight"] / max(child_weight, 1)
-            emit_frame(child_id, cursor, y - row_height, child_width, depth + 1)
-            cursor += child_width
+        pending_frames = [(node_id, x, y, width, depth)]
+        while pending_frames:
+            current_id, current_x, current_y, current_width, current_depth = pending_frames.pop()
+            current = nodes[current_id]
+            name = current["name"]
+            call_word = "call" if current["calls"] == 1 else "calls"
+            subtree_word = "call" if current["weight"] == 1 else "calls"
+            title = html.escape(
+                f"{name} — {current['calls']:,} {call_word}, "
+                f"{current['weight']:,} {subtree_word} in subtree"
+            )
+            frames.append(
+                f'<button type="button" class="frame" id="frame-{current_id}" '
+                f'data-node="{current_id}" title="{title}" '
+                f'style="left:{current_x * 100:.6f}%;width:{current_width * 100:.6f}%;top:{current_y}px;'
+                f'height:{frame_height}px;background:{colors[current_depth % len(colors)]}">'
+                f'<span>{html.escape(name)}</span></button>'
+            )
+            child_x = current_x
+            children = sorted(
+                current["children"],
+                key=lambda child: (-nodes[child]["weight"], nodes[child]["name"]),
+            )
+            child_frames = []
+            for child_id in children:
+                child = nodes[child_id]
+                child_width = current_width * child["weight"] / max(current["weight"], 1)
+                child_frames.append(
+                    (child_id, child_x, current_y - row_height, child_width, current_depth + 1)
+                )
+                child_x += child_width
+            pending_frames.extend(reversed(child_frames))
 
     root_children = sorted(
         nodes[0]["children"], key=lambda child: (-nodes[child]["weight"], nodes[child]["name"])
     )
     cursor = 0.0
-    root_weight = sum(nodes[node_id]["weight"] for node_id in root_children)
     for node_id in root_children:
         node = nodes[node_id]
-        width = node["weight"] / max(root_weight, 1)
+        width = node["weight"] / max(nodes[0]["weight"], 1)
         emit_frame(node_id, cursor, chart_height - row_height, width, 0)
         cursor += width
 
     function_paths = []
-    for node_id, node in nodes.items():
-        if node_id == 0:
-            continue
-        names = []
-        current = node
-        while current["parent"] is not None:
-            names.append(current["name"])
-            current = nodes[current["parent"]]
-        names.reverse()
-        function_paths.append((node_id, " → ".join(names), node["calls"]))
+    paths = {0: ""}
+    for node_id in order[1:]:
+        node = nodes[node_id]
+        paths[node_id] = f"{paths[node['parent']]} → {node['name']}".lstrip(" →")
+        function_paths.append((node_id, paths[node_id], node["calls"]))
     index = "".join(
         f'<li><button type="button" data-target="{node_id}">'
         f'<span class="name">{html.escape(path)}</span>'
@@ -189,9 +208,8 @@ function place(node,x,y,width,depth){{
   frame.style.top=y+'px';frame.style.background=colors[depth%colors.length];
   let cursor=x;
   const children=node.children.map(id=>nodes[id]).sort((a,b)=>b.weight-a.weight||a.name.localeCompare(b.name));
-  const childWeight=children.reduce((sum,child)=>sum+child.weight,0);
   for(const child of children){{
-    const childWidth=width*child.weight/Math.max(childWeight,1);
+    const childWidth=width*child.weight/Math.max(node.weight,1);
     place(child,cursor,y-rowHeight,childWidth,depth+1);cursor+=childWidth;
   }}
 }}
@@ -205,9 +223,8 @@ function reset(){{
   for(const frame of frames)frame.style.display='';
   let cursor=0;
   const children=nodes[0].children.map(id=>nodes[id]).sort((a,b)=>b.weight-a.weight||a.name.localeCompare(b.name));
-  const rootWeight=children.reduce((sum,child)=>sum+child.weight,0);
   for(const child of children){{
-    const width=child.weight/Math.max(rootWeight,1);
+    const width=child.weight/Math.max(nodes[0].weight,1);
     place(child,cursor,chart.clientHeight-rowHeight,width,0);cursor+=width;
   }}
   hint.textContent='Showing the full call tree';
@@ -226,6 +243,7 @@ reset();
 
 
 def main():
+    """Parse command-line paths and render the requested profile trace."""
     if len(sys.argv) != 3:
         fail("usage: render-flamegraph.py PROFILE_TRACE OUTPUT_HTML")
     render(Path(sys.argv[1]), Path(sys.argv[2]))

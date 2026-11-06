@@ -1,6 +1,9 @@
 //! Small attribute macro for opt-in function invocation profiling.
 
 use proc_macro::{Delimiter, Group, TokenStream, TokenTree};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static GENERATED_MODULE_ID: AtomicUsize = AtomicUsize::new(0);
 
 /// Excludes one function from an enclosing `#[profiled_module]`.
 #[proc_macro_attribute]
@@ -22,7 +25,9 @@ pub fn profiled_module(attribute: TokenStream, item: TokenStream) -> TokenStream
         })
         .filter(|value| value.starts_with('"') && value.ends_with('"'))
     else {
-        return compile_error("expected a source path string, e.g. #[profiled_module(\"src/foo.rs\")]");
+        return compile_error(
+            "expected a source path string, e.g. #[profiled_module(\"src/foo.rs\")]",
+        );
     };
     let relative_path = path.trim_matches('"');
     let manifest = match std::env::var("CARGO_MANIFEST_DIR") {
@@ -50,7 +55,9 @@ pub fn profiled_module(attribute: TokenStream, item: TokenStream) -> TokenStream
                     .join(source_path.file_stem().unwrap_or_default())
             };
             let tokens = resolve_external_module_paths(tokens, &module_dir);
-            transform_scope(tokens)
+            let source_dir = source_path.parent().unwrap_or(&manifest);
+            let tokens = resolve_relative_include_paths(tokens, source_dir);
+            transform_scope(tokens, None)
         }
         Err(error) => return compile_error(&format!("cannot parse profiled module: {error}")),
     };
@@ -63,21 +70,27 @@ pub fn profiled_module(attribute: TokenStream, item: TokenStream) -> TokenStream
     source_tokens.extend(dependency);
 
     let output: Vec<_> = strip_path_attributes(item.into_iter().collect());
-    let Some(module_index) = output.iter().position(
-        |token| matches!(token, TokenTree::Ident(ident) if ident.to_string() == "mod"),
-    ) else {
+    let Some(module_index) = output
+        .iter()
+        .position(|token| matches!(token, TokenTree::Ident(ident) if ident.to_string() == "mod"))
+    else {
         return compile_error("#[profiled_module] must be applied to a module declaration");
     };
     let Some(TokenTree::Ident(_module_name)) = output.get(module_index + 1) else {
         return compile_error("could not read module name");
     };
-    if !output.iter().any(|token| matches!(token, TokenTree::Punct(punct) if punct.as_char() == ';')) {
+    if !output
+        .iter()
+        .any(|token| matches!(token, TokenTree::Punct(punct) if punct.as_char() == ';'))
+    {
         return compile_error("#[profiled_module] expects an out-of-line module declaration");
     }
 
     let out_dir = manifest.join("target/profiled_modules");
     if let Err(error) = std::fs::create_dir_all(&out_dir) {
-        return compile_error(&format!("cannot create generated module directory: {error}"));
+        return compile_error(&format!(
+            "cannot create generated module directory: {error}"
+        ));
     }
     let generated_name: String = relative_path
         .chars()
@@ -89,7 +102,12 @@ pub fn profiled_module(attribute: TokenStream, item: TokenStream) -> TokenStream
             }
         })
         .collect();
-    let generated_path = out_dir.join(format!("profiled_{generated_name}"));
+    let generated_id = GENERATED_MODULE_ID.fetch_add(1, Ordering::Relaxed);
+    let generated_path = out_dir.join(format!(
+        "profiled_{generated_name}_{}_{}",
+        std::process::id(),
+        generated_id
+    ));
     if let Err(error) = std::fs::write(&generated_path, source_tokens.to_string()) {
         return compile_error(&format!("cannot write generated module source: {error}"));
     }
@@ -101,6 +119,7 @@ pub fn profiled_module(attribute: TokenStream, item: TokenStream) -> TokenStream
     expanded.into_iter().collect()
 }
 
+/// Remove source-file path attributes before installing the generated path.
 fn strip_path_attributes(tokens: Vec<TokenTree>) -> Vec<TokenTree> {
     let mut output = Vec::with_capacity(tokens.len());
     let mut index = 0;
@@ -120,12 +139,14 @@ fn strip_path_attributes(tokens: Vec<TokenTree>) -> Vec<TokenTree> {
     output
 }
 
+/// Build a compile-time diagnostic from a macro expansion error.
 fn compile_error(message: &str) -> TokenStream {
     format!("compile_error!({message:?});")
         .parse()
         .expect("valid compile_error token stream")
 }
 
+/// Return the identifier following `fn` at the given token position.
 fn function_name(tokens: &[TokenTree], index: usize) -> Option<String> {
     if !matches!(tokens.get(index), Some(TokenTree::Ident(ident)) if ident.to_string() == "fn") {
         return None;
@@ -136,6 +157,7 @@ fn function_name(tokens: &[TokenTree], index: usize) -> Option<String> {
     }
 }
 
+/// Check whether an attribute marker applies to the function at `index`.
 fn has_marker_before(tokens: &[TokenTree], index: usize, marker: &str) -> bool {
     let start = tokens[..index]
         .iter()
@@ -151,19 +173,32 @@ fn has_marker_before(tokens: &[TokenTree], index: usize, marker: &str) -> bool {
     })
 }
 
+/// Find a function body without mistaking const-generic braces for it.
 fn function_body_index(tokens: &[TokenTree], index: usize) -> Option<usize> {
+    let mut angle_depth = 0usize;
+    let mut previous_was_minus = false;
     for (offset, token) in tokens[index + 2..].iter().enumerate() {
         match token {
             TokenTree::Punct(punct) if punct.as_char() == ';' => return None,
             TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => {
-                return Some(index + 2 + offset);
+                if angle_depth == 0 {
+                    return Some(index + 2 + offset);
+                }
+            }
+            TokenTree::Punct(punct) if punct.as_char() == '<' => angle_depth += 1,
+            TokenTree::Punct(punct) if punct.as_char() == '>' => {
+                if !previous_was_minus {
+                    angle_depth = angle_depth.saturating_sub(1);
+                }
             }
             _ => {}
         }
+        previous_was_minus = matches!(token, TokenTree::Punct(punct) if punct.as_char() == '-');
     }
     None
 }
 
+/// Identify const functions, whose bodies cannot contain the profiling hook.
 fn is_const_function(tokens: &[TokenTree], index: usize) -> bool {
     let start = tokens[..index]
         .iter()
@@ -177,16 +212,42 @@ fn is_const_function(tokens: &[TokenTree], index: usize) -> bool {
         .any(|token| matches!(token, TokenTree::Ident(ident) if ident.to_string() == "const"))
 }
 
-fn transform_scope(stream: TokenStream) -> TokenStream {
-    let mut tokens: Vec<_> = stream
-        .into_iter()
-        .map(|token| match token {
+/// Return the enclosing impl or trait header for a brace-delimited scope.
+fn scope_context(tokens: &[TokenTree], group_index: usize) -> Option<String> {
+    let context_index = (0..group_index).rev().find(|index| {
+        matches!(&tokens[*index], TokenTree::Ident(ident)
+            if ident.to_string() == "impl" || ident.to_string() == "trait")
+    })?;
+    let last_function = (0..group_index).rev().find(
+        |index| matches!(&tokens[*index], TokenTree::Ident(ident) if ident.to_string() == "fn"),
+    );
+    if last_function.is_some_and(|index| index > context_index) {
+        return None;
+    }
+    Some(
+        tokens[context_index..group_index]
+            .iter()
+            .cloned()
+            .collect::<TokenStream>()
+            .to_string(),
+    )
+}
+
+/// Instrument function bodies in a scope while preserving method context.
+fn transform_scope(stream: TokenStream, context: Option<String>) -> TokenStream {
+    let original_tokens: Vec<_> = stream.into_iter().collect();
+    let mut tokens: Vec<_> = original_tokens
+        .iter()
+        .enumerate()
+        .map(|(index, token)| match token {
             TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => {
-                let mut transformed = Group::new(Delimiter::Brace, transform_scope(group.stream()));
+                let inherited = scope_context(&original_tokens, index).or_else(|| context.clone());
+                let mut transformed =
+                    Group::new(Delimiter::Brace, transform_scope(group.stream(), inherited));
                 transformed.set_span(group.span());
                 TokenTree::Group(transformed)
             }
-            other => other,
+            other => other.clone(),
         })
         .collect();
 
@@ -195,6 +256,7 @@ fn transform_scope(stream: TokenStream) -> TokenStream {
         .collect();
     for index in function_indices.into_iter().rev() {
         if has_marker_before(&tokens, index, "not_profiled")
+            || has_marker_before(&tokens, index, "naked")
             || is_const_function(&tokens, index)
         {
             continue;
@@ -209,8 +271,11 @@ fn transform_scope(stream: TokenStream) -> TokenStream {
             continue;
         };
         let mut body = TokenStream::new();
+        let identity = context
+            .as_deref()
+            .map_or_else(|| name.clone(), |context| format!("{context}::{name}"));
         if let Ok(hook) = format!(
-            "#[cfg(feature = \"profiling\")] let _profile_guard = crate::profiling::enter(concat!(module_path!(), \"::\", \"{name}\"));"
+            "#[cfg(feature = \"profiling\")] let _profile_guard = crate::profiling::enter(concat!(module_path!(), \"::\", {identity:?}));"
         )
         .parse::<TokenStream>()
         {
@@ -224,6 +289,7 @@ fn transform_scope(stream: TokenStream) -> TokenStream {
     tokens.into_iter().collect()
 }
 
+/// Resolve child module declarations against their original source directory.
 fn resolve_external_module_paths(stream: TokenStream, module_dir: &std::path::Path) -> TokenStream {
     let mut tokens: Vec<_> = stream.into_iter().collect();
     let mut index = 0;
@@ -275,14 +341,12 @@ fn resolve_external_module_paths(stream: TokenStream, module_dir: &std::path::Pa
                 if group.delimiter() == Delimiter::Bracket
                     && group.stream().to_string().starts_with("path"))
         });
-        if !has_path {
+        if has_path {
+            resolve_relative_module_path(&mut tokens[item_start..index], module_dir);
+        } else {
             let direct = module_dir.join(format!("{name}.rs"));
             let nested = module_dir.join(&name).join("mod.rs");
-            let child_path = if direct.is_file() {
-                direct
-            } else {
-                nested
-            };
+            let child_path = if direct.is_file() { direct } else { nested };
             if child_path.is_file() {
                 let attribute: Vec<_> = format!("#[path = {:?}]", child_path.to_string_lossy())
                     .parse::<TokenStream>()
@@ -296,4 +360,169 @@ fn resolve_external_module_paths(stream: TokenStream, module_dir: &std::path::Pa
         index += 3;
     }
     tokens.into_iter().collect()
+}
+
+/// Make a relative `#[path]` literal absolute while leaving absolute paths intact.
+fn resolve_relative_module_path(tokens: &mut [TokenTree], module_dir: &std::path::Path) {
+    for token in tokens {
+        let TokenTree::Group(attribute) = token else {
+            continue;
+        };
+        if attribute.delimiter() != Delimiter::Bracket {
+            continue;
+        }
+        let mut parts: Vec<_> = attribute.stream().into_iter().collect();
+        if !matches!(parts.first(), Some(TokenTree::Ident(ident)) if ident.to_string() == "path") {
+            continue;
+        }
+        let Some(literal_index) = parts
+            .iter()
+            .position(|part| matches!(part, TokenTree::Literal(_)))
+        else {
+            continue;
+        };
+        let TokenTree::Literal(literal) = &parts[literal_index] else {
+            continue;
+        };
+        let Some(value) = decode_string_literal(literal) else {
+            continue;
+        };
+        let path = std::path::Path::new(&value);
+        if path.is_absolute() {
+            continue;
+        }
+        let absolute = module_dir.join(path);
+        let replacement: TokenTree = format!("{:?}", absolute.to_string_lossy())
+            .parse::<TokenStream>()
+            .expect("resolved child module path is a string literal")
+            .into_iter()
+            .next()
+            .expect("resolved child module path literal exists");
+        parts[literal_index] = replacement;
+        let mut rewritten = Group::new(Delimiter::Bracket, parts.into_iter().collect());
+        rewritten.set_span(attribute.span());
+        *token = TokenTree::Group(rewritten);
+    }
+}
+
+/// Keep relative `include_str!` and `include_bytes!` paths source-relative.
+fn resolve_relative_include_paths(
+    stream: TokenStream,
+    module_dir: &std::path::Path,
+) -> TokenStream {
+    let mut tokens: Vec<_> = stream
+        .into_iter()
+        .map(|token| match token {
+            TokenTree::Group(group) => {
+                let mut rewritten = Group::new(
+                    group.delimiter(),
+                    resolve_relative_include_paths(group.stream(), module_dir),
+                );
+                rewritten.set_span(group.span());
+                TokenTree::Group(rewritten)
+            }
+            other => other,
+        })
+        .collect();
+    let mut index = 0;
+    while index + 2 < tokens.len() {
+        let is_include = matches!(&tokens[index], TokenTree::Ident(ident)
+            if ident.to_string() == "include_str"
+                || ident.to_string() == "include_bytes"
+                || ident.to_string() == "include")
+            && matches!(&tokens[index + 1], TokenTree::Punct(punct) if punct.as_char() == '!');
+        if !is_include {
+            index += 1;
+            continue;
+        }
+        let TokenTree::Group(arguments) = &tokens[index + 2] else {
+            index += 3;
+            continue;
+        };
+        let mut args: Vec<_> = arguments.stream().into_iter().collect();
+        let Some(TokenTree::Literal(literal)) = args.first() else {
+            index += 3;
+            continue;
+        };
+        let Some(value) = decode_string_literal(literal) else {
+            index += 3;
+            continue;
+        };
+        if std::path::Path::new(&value).is_absolute() {
+            index += 3;
+            continue;
+        }
+        let prefix = format!("concat!({:?}, \"/\", ", module_dir.to_string_lossy());
+        let suffix = ")";
+        let expression = format!("{prefix}{}{suffix}", literal);
+        let replacement: TokenStream = expression
+            .parse()
+            .expect("relative include path expression is valid");
+        args.splice(0..1, replacement);
+        let mut rewritten = Group::new(arguments.delimiter(), args.into_iter().collect());
+        rewritten.set_span(arguments.span());
+        tokens[index + 2] = TokenTree::Group(rewritten);
+        index += 3;
+    }
+    tokens.into_iter().collect()
+}
+
+/// Decode a path string literal for absolute-path detection.
+fn decode_string_literal(literal: &proc_macro::Literal) -> Option<String> {
+    let text = literal.to_string();
+    if text.starts_with('r') {
+        let quote = text.find('"')?;
+        let hashes = &text[1..quote];
+        let closing = format!("\"{hashes}");
+        return text
+            .get(quote + 1..)?
+            .strip_suffix(&closing)
+            .map(str::to_owned);
+    }
+    let inner = text.strip_prefix('"')?.strip_suffix('"')?;
+    let mut chars = inner.chars().peekable();
+    let mut decoded = String::new();
+    while let Some(character) = chars.next() {
+        if character != '\\' {
+            decoded.push(character);
+            continue;
+        }
+        match chars.next()? {
+            '\\' => decoded.push('\\'),
+            '"' => decoded.push('"'),
+            'n' => decoded.push('\n'),
+            'r' => decoded.push('\r'),
+            't' => decoded.push('\t'),
+            '0' => decoded.push('\0'),
+            'x' => {
+                let high = chars.next()?.to_digit(16)?;
+                let low = chars.next()?.to_digit(16)?;
+                decoded.push(char::from_u32(high * 16 + low)?);
+            }
+            'u' => {
+                if chars.next()? != '{' {
+                    return None;
+                }
+                let mut digits = String::new();
+                loop {
+                    match chars.next()? {
+                        '}' => break,
+                        '_' => {}
+                        digit => digits.push(digit),
+                    }
+                }
+                decoded.push(char::from_u32(u32::from_str_radix(&digits, 16).ok()?)?);
+            }
+            '\n' => {
+                while chars
+                    .peek()
+                    .is_some_and(|character| character.is_whitespace())
+                {
+                    chars.next();
+                }
+            }
+            _ => return None,
+        }
+    }
+    Some(decoded)
 }

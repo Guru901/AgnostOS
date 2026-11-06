@@ -12,11 +12,15 @@ from pathlib import Path
 
 
 def fail(message):
+    """Stop the automated guest run with a diagnostic."""
     raise RuntimeError(message)
 
 
 class Qmp:
+    """Minimal synchronous client for QEMU's JSON monitor protocol."""
+
     def __init__(self, path):
+        """Connect to QEMU's QMP socket and enable command support."""
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.sock.settimeout(30)
         deadline = time.monotonic() + 15
@@ -33,12 +37,14 @@ class Qmp:
         self.command("qmp_capabilities")
 
     def _read(self):
+        """Read one QMP response object from the socket."""
         line = self.file.readline()
         if not line:
             fail("QMP connection closed unexpectedly")
         return json.loads(line)
 
     def command(self, name, arguments=None):
+        """Execute a QMP command and return its result."""
         request = {"execute": name}
         if arguments is not None:
             request["arguments"] = arguments
@@ -52,6 +58,7 @@ class Qmp:
                 fail(f"QMP {name} failed: {response['error']}")
 
     def key_press(self, name):
+        """Send one key press and release to the guest."""
         key = lambda down: {
             "type": "key",
             "data": {"down": down, "key": {"type": "qcode", "data": name}},
@@ -59,11 +66,13 @@ class Qmp:
         self.command("input-send-event", {"events": [key(True), key(False)]})
 
     def close(self):
+        """Close the QMP socket and buffered stream."""
         self.file.close()
         self.sock.close()
 
 
 def wait_for_trace(trace, process, marker, timeout, description):
+    """Wait for a debug trace marker or report why QEMU stopped."""
     deadline = time.monotonic() + timeout
     content = ""
     while time.monotonic() < deadline:
@@ -72,12 +81,17 @@ def wait_for_trace(trace, process, marker, timeout, description):
             if marker in content:
                 return content
         if process.poll() is not None:
+            if trace.exists():
+                content = trace.read_text(errors="replace")
+                if marker in content:
+                    return content
             fail(f"QEMU exited before {description}; debug trace was:\n{content[-4000:]}")
         time.sleep(0.05)
     fail(f"timed out waiting for {description}; debug trace was:\n{content[-4000:]}")
 
 
 def qcode_for(character):
+    """Translate a supported shell character to a QEMU key code."""
     if "a" <= character <= "z" or "0" <= character <= "9":
         return character
     special = {" ": "spc", "-": "minus", ".": "dot", "/": "slash"}
@@ -87,6 +101,7 @@ def qcode_for(character):
 
 
 def type_command(qmp, command, key_delay):
+    """Type a lowercase shell command followed by Enter."""
     for character in command:
         qmp.key_press(qcode_for(character))
         if key_delay:
@@ -95,6 +110,7 @@ def type_command(qmp, command, key_delay):
 
 
 def main():
+    """Boot the profiling guest, run commands, and await its exported trace."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--esp", type=Path, required=True)
     parser.add_argument("--trace", type=Path, required=True)
@@ -139,12 +155,17 @@ def main():
             args.startup_timeout,
             "the guest shell to become ready",
         )
+        shutdown_requested = False
         for command in args.commands:
             print(f"Guest command: {command}", flush=True)
             type_command(qmp, command, args.key_delay)
+            if command.strip().lower() == "shutdown":
+                shutdown_requested = True
+                break
             time.sleep(args.command_delay)
-        print("Guest command: shutdown", flush=True)
-        type_command(qmp, "shutdown", args.key_delay)
+        if not shutdown_requested:
+            print("Guest command: shutdown", flush=True)
+            type_command(qmp, "shutdown", args.key_delay)
         wait_for_trace(
             args.trace,
             process,
