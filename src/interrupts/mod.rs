@@ -5,21 +5,39 @@
 //! in their own modules so device drivers only depend on the small port-I/O
 //! interface exposed here.
 
-#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled_module("src/interrupts/controller.rs"))]
+#[cfg_attr(
+    feature = "profiling",
+    agnostos_profile_macro::profiled_module("src/interrupts/controller.rs")
+)]
 mod controller;
 #[cfg(target_arch = "x86_64")]
-#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled_module("src/interrupts/gdt.rs"))]
+#[cfg_attr(
+    feature = "profiling",
+    agnostos_profile_macro::profiled_module("src/interrupts/gdt.rs")
+)]
 mod gdt;
 #[cfg(target_arch = "x86_64")]
-#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled_module("src/interrupts/handlers.rs"))]
+#[cfg_attr(
+    feature = "profiling",
+    agnostos_profile_macro::profiled_module("src/interrupts/handlers.rs")
+)]
 mod handlers;
 #[cfg(target_arch = "x86_64")]
-#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled_module("src/interrupts/idt.rs"))]
+#[cfg_attr(
+    feature = "profiling",
+    agnostos_profile_macro::profiled_module("src/interrupts/idt.rs")
+)]
 mod idt;
-#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled_module("src/interrupts/pic.rs"))]
+#[cfg_attr(
+    feature = "profiling",
+    agnostos_profile_macro::profiled_module("src/interrupts/pic.rs")
+)]
 mod pic;
 #[cfg(target_arch = "x86_64")]
-#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled_module("src/interrupts/pit.rs"))]
+#[cfg_attr(
+    feature = "profiling",
+    agnostos_profile_macro::profiled_module("src/interrupts/pit.rs")
+)]
 mod pit;
 
 #[cfg(target_arch = "x86_64")]

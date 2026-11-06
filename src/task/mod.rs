@@ -7,9 +7,15 @@
 
 use core::fmt;
 
-#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled_module("src/task/context.rs"))]
+#[cfg_attr(
+    feature = "profiling",
+    agnostos_profile_macro::profiled_module("src/task/context.rs")
+)]
 pub mod context;
-#[cfg_attr(feature = "profiling", agnostos_profile_macro::profiled_module("src/task/stack.rs"))]
+#[cfg_attr(
+    feature = "profiling",
+    agnostos_profile_macro::profiled_module("src/task/stack.rs")
+)]
 pub mod stack;
 
 use crate::globals::task::MAX_TASKS;

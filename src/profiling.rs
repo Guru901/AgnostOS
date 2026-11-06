@@ -30,7 +30,6 @@ impl Node {
         next_sibling: NO_NODE,
         calls: 0,
     };
-
 }
 
 struct NodeBuffer(UnsafeCell<[Node; NODE_CAPACITY]>);
