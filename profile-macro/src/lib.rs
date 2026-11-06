@@ -214,23 +214,25 @@ fn is_const_function(tokens: &[TokenTree], index: usize) -> bool {
 
 /// Return the enclosing impl or trait header for a brace-delimited scope.
 fn scope_context(tokens: &[TokenTree], group_index: usize) -> Option<String> {
-    let context_index = (0..group_index).rev().find(|index| {
-        matches!(&tokens[*index], TokenTree::Ident(ident)
-            if ident.to_string() == "impl" || ident.to_string() == "trait")
-    })?;
-    let last_function = (0..group_index).rev().find(
-        |index| matches!(&tokens[*index], TokenTree::Ident(ident) if ident.to_string() == "fn"),
-    );
-    if last_function.is_some_and(|index| index > context_index) {
+    let start = tokens[..group_index]
+        .iter()
+        .rposition(|token| {
+            matches!(token, TokenTree::Punct(punct) if punct.as_char() == ';')
+                || matches!(token, TokenTree::Group(group) if group.delimiter() == Delimiter::Brace)
+        })
+        .map_or(0, |position| position + 1);
+    let window = &tokens[start..group_index];
+    if window
+        .iter()
+        .any(|token| matches!(token, TokenTree::Ident(ident) if ident.to_string() == "fn"))
+    {
         return None;
     }
-    Some(
-        tokens[context_index..group_index]
-            .iter()
-            .cloned()
-            .collect::<TokenStream>()
-            .to_string(),
-    )
+    let offset = window.iter().position(|token| {
+        matches!(token, TokenTree::Ident(ident)
+            if ident.to_string() == "impl" || ident.to_string() == "trait")
+    })?;
+    Some(window[offset..].iter().cloned().collect::<TokenStream>().to_string())
 }
 
 /// Instrument function bodies in a scope while preserving method context.
