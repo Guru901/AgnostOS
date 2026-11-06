@@ -36,8 +36,8 @@ pub(crate) static CURSOR_H: usize = 20;
 /// Names Tab-complete is allowed to match. Keep in sync with [`crate::commands`].
 pub(crate) mod command {
     pub(crate) const COMMAND_NAMES: &[&str] = &[
-        "about", "clear", "echo", "font", "help", "history", "meminfo", "shutdown", "taskinfo",
-        "uptime",
+        "about", "clear", "echo", "font", "help", "history", "meminfo", "ping", "shutdown",
+        "taskinfo", "uptime",
     ];
 }
 
@@ -95,4 +95,8 @@ pub(crate) mod timer {
     /// Desired IRQ rate after programming channel 0.
     pub(crate) const TIMER_FREQUENCY: u64 = 1_000;
     pub(crate) const PIT_DIVISOR: u64 = PIT_FREQUENCY / TIMER_FREQUENCY;
+}
+
+pub(crate) mod net {
+    pub(crate) const MAX_NET_INTERFACE: usize = 1;
 }

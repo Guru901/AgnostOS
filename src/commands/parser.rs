@@ -16,6 +16,7 @@ pub(crate) enum Command {
     Empty,
     Unknown,
     Uptime,
+    Ping,
 }
 
 /// Returns a command name only when `prefix` identifies exactly one command.
@@ -57,6 +58,7 @@ pub(crate) fn parse(input: &str) -> ParsedCommand<'_> {
         "clear" => Command::Clear,
         "shutdown" => Command::Shutdown,
         "uptime" => Command::Uptime,
+        "ping" => Command::Ping,
         "" => Command::Empty,
         _ => Command::Unknown,
     };
