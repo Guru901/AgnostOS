@@ -40,7 +40,6 @@ pub(super) fn vector_for(irq: Irq) -> u8 {
     CONTROLLER.vector_for(irq)
 }
 
-#[cfg_attr(feature = "profiling", agnostos_profile_macro::not_profiled)]
 pub(super) fn acknowledge(irq: Irq) {
     CONTROLLER.acknowledge(irq);
 }

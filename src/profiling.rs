@@ -137,6 +137,40 @@ pub(crate) fn enter(name: &'static str) -> ProfileGuard {
     }
 }
 
+/// Temporarily excludes the current call path while timer IRQ acknowledgement runs.
+#[agnostos_profile_macro::not_profiled]
+pub(crate) fn suspend_recording() -> ProfileGuard {
+    #[cfg(not(target_os = "uefi"))]
+    {
+        return ProfileGuard {};
+    }
+
+    #[cfg(target_os = "uefi")]
+    {
+        if !RECORDING.load(Ordering::Relaxed) {
+            return ProfileGuard {
+                previous: ROOT,
+                active: false,
+            };
+        }
+        let interrupts_were_enabled = x86_64::instructions::interrupts::are_enabled();
+        x86_64::instructions::interrupts::disable();
+        if !RECORDING.load(Ordering::Relaxed) {
+            restore_interrupts(interrupts_were_enabled);
+            return ProfileGuard {
+                previous: ROOT,
+                active: false,
+            };
+        }
+        let previous = CURRENT_NODE.swap(NO_NODE, Ordering::Relaxed);
+        restore_interrupts(interrupts_were_enabled);
+        ProfileGuard {
+            previous,
+            active: true,
+        }
+    }
+}
+
 pub(crate) struct ProfileGuard {
     #[cfg(target_os = "uefi")]
     previous: u32,

@@ -124,7 +124,11 @@ pub(super) extern "x86-interrupt" fn timer(_stack_frame: InterruptStackFrame) {
     TICKS.fetch_add(1, Ordering::Relaxed);
     #[cfg(feature = "timer-smoke")]
     crate::timer_smoke::tick();
-    controller::acknowledge(Irq::Timer);
+    {
+        #[cfg(feature = "profiling")]
+        let _profile_suppression = crate::profiling::suspend_recording();
+        controller::acknowledge(Irq::Timer);
+    }
 }
 
 pub(super) extern "x86-interrupt" fn keyboard(_stack_frame: InterruptStackFrame) {
