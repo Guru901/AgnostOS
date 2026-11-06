@@ -193,3 +193,9 @@ pub mod commands;
     agnostos_profile_macro::profiled_module("src/task/mod.rs")
 )]
 pub mod task;
+
+#[cfg_attr(
+    feature = "profiling",
+    agnostos_profile_macro::profiled_module("src/net/mod.rs")
+)]
+pub mod net;

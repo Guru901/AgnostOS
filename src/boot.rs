@@ -65,6 +65,18 @@ pub fn initialize() -> Status {
     #[cfg(feature = "input-smoke")]
     crate::input_smoke::ready();
     interrupts::enable_runtime();
+    match crate::net::initialize() {
+        Ok(mac) => kprintln!(
+            "RTL8139 network ready ({:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x})",
+            mac.0[0],
+            mac.0[1],
+            mac.0[2],
+            mac.0[3],
+            mac.0[4],
+            mac.0[5]
+        ),
+        Err(error) => kprintln!("Network unavailable: {error:?}"),
+    }
     #[cfg(feature = "fault-smoke")]
     {
         crate::fault_smoke::trigger();

@@ -93,6 +93,19 @@ The ISO is written to `target/agnostos.iso`. You can test it in QEMU with:
 qemu-system-x86_64 -bios ./bios/OVMF.4m.fd -cdrom target/agnostos.iso
 ```
 
+Attach the RTL8139 with QEMU's user-mode network backend to use `ping`:
+
+```sh
+qemu-system-x86_64 -bios ./bios/OVMF.4m.fd -cdrom target/agnostos.iso \
+  -netdev user,id=net0 -device rtl8139,netdev=net0
+```
+
+The current network configuration targets QEMU user networking (`10.0.2.15`,
+gateway `10.0.2.2`, DNS `10.0.2.3`). The shell accepts an IPv4 address or a
+hostname, for example `ping 10.0.2.2` or `ping example.com`.
+QEMU's user-mode backend may restrict ICMP to the local gateway depending on
+host permissions; DNS lookups use its built-in DNS forwarder.
+
 The ISO contains the standard removable-media path
 `EFI/BOOT/BOOTX64.EFI`, so it can also be written to suitable UEFI optical
 media or used as a source for further USB-image packaging. The ISO builder
