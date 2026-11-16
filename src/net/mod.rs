@@ -655,6 +655,7 @@ pub fn internet_checksum(bytes: &[u8]) -> u16 {
     let mut chunks = bytes.chunks_exact(2);
     for pair in &mut chunks {
         sum += u32::from(u16::from_be_bytes([pair[0], pair[1]]));
+        sum = (sum & 0xffff) + (sum >> 16);
     }
     if let Some(&last) = chunks.remainder().first() {
         sum += u32::from(last) << 8;
