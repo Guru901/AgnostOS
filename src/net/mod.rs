@@ -22,7 +22,9 @@ const PING_ID: u16 = 0x4147;
 const MAX_FRAME_LEN: usize = 1536;
 const ECHO_DATA: &[u8] = b"agnostos ping";
 const DNS_PORT: u16 = 53000;
-const DNS_QUERY_ID: u16 = 0x4e53;
+static NEXT_DNS_QUERY_ID: AtomicU16 = AtomicU16::new(0x4e53);
+// Serialize polling lookups so they cannot consume each other's responses.
+static DNS_LOOKUP: Mutex<()> = Mutex::new(());
 static NEXT_IPV4_IDENTIFICATION: AtomicU16 = AtomicU16::new(1);
 
 /// Allocate the next IPv4 Identification value for an outgoing datagram.
@@ -117,11 +119,12 @@ pub fn ping(destination: Ipv4Addr, sequence: u16, timeout_ms: u64) -> Result<u64
     let mut frame_buffer = [0u8; MAX_FRAME_LEN];
     while crate::timer::uptime_ms() <= deadline {
         if let Some(NetEvent::EchoReply(source, reply_id, reply_sequence)) =
-            receive_and_process(config, &mut frame_buffer)?
+            receive_and_process(config, &mut frame_buffer, None)?
+            && source == destination
+            && reply_id == PING_ID
+            && reply_sequence == sequence
         {
-            if source == destination && reply_id == PING_ID && reply_sequence == sequence {
-                return Ok(crate::timer::uptime_ms().saturating_sub(started));
-            }
+            return Ok(crate::timer::uptime_ms().saturating_sub(started));
         }
         core::hint::spin_loop();
     }
@@ -130,6 +133,7 @@ pub fn ping(destination: Ipv4Addr, sequence: u16, timeout_ms: u64) -> Result<u64
 
 /// Resolve a hostname through the DNS server supplied by QEMU user networking.
 pub fn resolve_hostname(hostname: &str) -> Result<Ipv4Addr, NetworkError> {
+    let _lookup = DNS_LOOKUP.lock();
     let config = NETWORK
         .lock()
         .as_ref()
@@ -138,7 +142,12 @@ pub fn resolve_hostname(hostname: &str) -> Result<Ipv4Addr, NetworkError> {
     let destination_mac = resolve_address(DNS_IPV4, config)?;
 
     let mut dns = [0u8; 512];
-    let dns_len = build_dns_query(hostname, DNS_QUERY_ID, &mut dns)?;
+    let transaction_id = NEXT_DNS_QUERY_ID.fetch_add(1, Ordering::Relaxed);
+    let dns_len = build_dns_query(hostname, transaction_id, &mut dns)?;
+    let query = DnsQuery {
+        transaction_id,
+        hostname,
+    };
     let mut udp = [0u8; 520];
     let udp_len = UdpDatagram::write(DNS_PORT, 53, &dns[..dns_len], &mut udp)
         .map_err(|_| NetworkError::DnsFailure)?;
@@ -163,7 +172,9 @@ pub fn resolve_hostname(hostname: &str) -> Result<Ipv4Addr, NetworkError> {
     let deadline = crate::timer::uptime_ms().saturating_add(3_000);
     let mut frame_buffer = [0u8; MAX_FRAME_LEN];
     while crate::timer::uptime_ms() <= deadline {
-        if let Some(NetEvent::DnsReply(address)) = receive_and_process(config, &mut frame_buffer)? {
+        if let Some(NetEvent::DnsReply(address)) =
+            receive_and_process(config, &mut frame_buffer, Some(&query))?
+        {
             return address.map(Ipv4Addr::from).ok_or(NetworkError::DnsFailure);
         }
         core::hint::spin_loop();
@@ -201,6 +212,65 @@ fn build_dns_query(
     Ok(cursor + 4)
 }
 
+/// Identity of the single active A/IN lookup.
+struct DnsQuery<'a> {
+    transaction_id: u16,
+    hostname: &'a str,
+}
+
+impl DnsQuery<'_> {
+    fn matches(&self, bytes: &[u8]) -> bool {
+        if bytes.len() < 12
+            || bytes[..2] != self.transaction_id.to_be_bytes()
+            || bytes[2] & 0xf8 != 0x80 // response to a standard query
+            || bytes[4..6] != [0, 1]
+        {
+            return false;
+        }
+        let Some(end) = skip_dns_name(bytes, 12) else {
+            return false;
+        };
+        if bytes.get(end..end + 4) != Some(&[0, 1, 0, 1]) {
+            return false;
+        }
+        // Follow compression pointers with a bounded budget to reject cycles.
+        let mut cursor = 12;
+        let mut budget = bytes.len();
+        let mut labels = self.hostname.split('.');
+        while budget > 0 {
+            budget -= 1;
+            let Some(&length) = bytes.get(cursor) else {
+                return false;
+            };
+            if length & 0xc0 == 0xc0 {
+                let Some(&low) = bytes.get(cursor + 1) else {
+                    return false;
+                };
+                cursor = (usize::from(length & 0x3f) << 8) | usize::from(low);
+                continue;
+            }
+            if length == 0 {
+                return labels.next().is_none();
+            }
+            if length & 0xc0 != 0 {
+                return false;
+            }
+            cursor += 1;
+            let Some(label) = bytes.get(cursor..cursor + usize::from(length)) else {
+                return false;
+            };
+            if !labels
+                .next()
+                .is_some_and(|expected| label.eq_ignore_ascii_case(expected.as_bytes()))
+            {
+                return false;
+            }
+            cursor += usize::from(length);
+        }
+        false
+    }
+}
+
 /// Extract the first IPv4 answer from a DNS response matching `transaction_id`.
 fn parse_dns_a_response(bytes: &[u8], transaction_id: u16) -> Option<[u8; 4]> {
     if bytes.len() < 12
@@ -233,7 +303,7 @@ fn parse_dns_a_response(bytes: &[u8], transaction_id: u16) -> Option<[u8; 4]> {
             return None;
         }
         if kind == 1 && class == 1 && length == 4 {
-            return Some(bytes[cursor..cursor + 4].try_into().ok()?);
+            return bytes[cursor..cursor + 4].try_into().ok();
         }
         cursor += length;
     }
@@ -245,9 +315,7 @@ fn skip_dns_name(bytes: &[u8], mut cursor: usize) -> Option<usize> {
     loop {
         let length = usize::from(*bytes.get(cursor)?);
         if length & 0xc0 == 0xc0 {
-            if bytes.get(cursor + 1).is_none() {
-                return None;
-            }
+            bytes.get(cursor + 1)?;
             return Some(cursor + 2);
         }
         if length & 0xc0 != 0 {
@@ -296,7 +364,7 @@ fn resolve_address(address: [u8; 4], config: NetworkConfig) -> Result<MacAddress
     let deadline = crate::timer::uptime_ms().saturating_add(1_000);
     let mut frame_buffer = [0u8; MAX_FRAME_LEN];
     while crate::timer::uptime_ms() <= deadline {
-        let _ = receive_and_process(config, &mut frame_buffer)?;
+        let _ = receive_and_process(config, &mut frame_buffer, None)?;
         let state = NETWORK.lock();
         if let Some(state) = *state
             && state.learned_ip == address
@@ -333,6 +401,7 @@ fn transmit_frame(
 fn receive_and_process(
     config: NetworkConfig,
     frame_buffer: &mut [u8; MAX_FRAME_LEN],
+    dns_query: Option<&DnsQuery<'_>>,
 ) -> Result<Option<NetEvent>, NetworkError> {
     let Some(length) = rtl8139::receive(frame_buffer).map_err(|_| NetworkError::DeviceFailure)?
     else {
@@ -389,11 +458,15 @@ fn receive_and_process(
                 }
                 17 => {
                     if let Ok(udp) = UdpDatagram::parse(packet.payload)
+                        && packet.source == DNS_IPV4
+                        && udp.source_port == 53
                         && udp.destination_port == DNS_PORT
+                        && let Some(query) = dns_query
+                        && query.matches(udp.payload)
                     {
                         return Ok(Some(NetEvent::DnsReply(parse_dns_a_response(
                             udp.payload,
-                            DNS_QUERY_ID,
+                            query.transaction_id,
                         ))));
                     }
                 }
@@ -823,6 +896,7 @@ pub enum PacketError {
 
 #[cfg(test)]
 mod packet_tests {
+    use super::{DnsQuery, build_dns_query, parse_dns_a_response, skip_dns_name};
     use super::{IPV4_MIN_HEADER_LEN, Ipv4Packet, internet_checksum};
 
     #[test]
@@ -852,6 +926,54 @@ mod packet_tests {
             internet_checksum(&[0x12, 0x34, 0x56]),
             reference_checksum(&[0x12, 0x34, 0x56])
         );
+    }
+
+    #[test]
+    fn dns_response_identity_rejects_unrelated_queries() {
+        let query = DnsQuery {
+            transaction_id: 42,
+            hostname: "example.com",
+        };
+        let mut response = [0; 512];
+        let len = build_dns_query("EXAMPLE.com", 42, &mut response).unwrap();
+        response[2] = 0x81;
+        assert!(query.matches(&response[..len]));
+        response[1] = 43;
+        assert!(!query.matches(&response[..len]));
+        response[1] = 42;
+        response[13] = b'z';
+        assert!(!query.matches(&response[..len]));
+        response[13] = b'E';
+        response[len - 3] = 28; // AAAA rather than A
+        assert!(!query.matches(&response[..len]));
+        assert!(!query.matches(&response[..len - 1]));
+    }
+
+    #[test]
+    fn dns_matching_answer_and_compressed_question() {
+        let query = DnsQuery {
+            transaction_id: 42,
+            hostname: "example.com",
+        };
+        let mut response = [0; 512];
+        let len = build_dns_query("example.com", 42, &mut response).unwrap();
+        response[2] = 0x81;
+        response[7] = 1;
+        let answer = [0xc0, 12, 0, 1, 0, 1, 0, 0, 0, 60, 0, 4, 192, 0, 2, 1];
+        response[len..len + answer.len()].copy_from_slice(&answer);
+        assert!(query.matches(&response[..len + answer.len()]));
+        assert_eq!(
+            parse_dns_a_response(&response[..len + answer.len()], 42),
+            Some([192, 0, 2, 1])
+        );
+
+        // Move the question name after the compressed question's type/class.
+        response.copy_within(12..len - 4, 18);
+        response[12..18].copy_from_slice(&[0xc0, 18, 0, 1, 0, 1]);
+        assert!(query.matches(&response[..len + 6]));
+        response[13] = 12; // self-referential compression pointer
+        assert!(!query.matches(&response[..len + 6]));
+        assert_eq!(skip_dns_name(&[0xc0], 0), None);
     }
 
     /// Compute the same checksum with a wide accumulator for regression checks.
