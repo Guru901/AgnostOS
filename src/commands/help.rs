@@ -47,6 +47,11 @@ pub(crate) fn help(args: &[&str]) {
                 kprintln!("uptime - tells how long the system has been running for");
                 kprintln!("usage: uptime");
             }
+            Command::Ping => {
+                kprintln!("ping - send an ICMP echo request to an IPv4 address or hostname");
+                kprintln!("usage: ping <address>");
+                kprintln!("network interfaces and DNS are not available yet");
+            }
             Command::Shutdown => {
                 kprintln!("shutdown - shuts the machine down instantly");
                 kprintln!("usage: shutdown");
@@ -66,6 +71,7 @@ pub(crate) fn help(args: &[&str]) {
         kprintln!("  meminfo   show heap memory information");
         kprintln!("  taskinfo  show scheduler task statistics");
         kprintln!("  uptime    tells how long the system has been running for");
+        kprintln!("  ping      send an ICMP echo request");
         kprintln!("  shutdown  shuts the machine down");
         kprintln!("");
         kprintln!("tip: type 'help <command>' for more details");

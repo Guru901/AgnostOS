@@ -16,6 +16,7 @@ pub(crate) enum Command {
     Empty,
     Unknown,
     Uptime,
+    Ping,
 }
 
 /// Returns a command name only when `prefix` identifies exactly one command.
@@ -57,6 +58,7 @@ pub(crate) fn parse(input: &str) -> ParsedCommand<'_> {
         "clear" => Command::Clear,
         "shutdown" => Command::Shutdown,
         "uptime" => Command::Uptime,
+        "ping" => Command::Ping,
         "" => Command::Empty,
         _ => Command::Unknown,
     };
@@ -94,6 +96,14 @@ mod tests {
         assert_eq!(parsed.command, Command::Uptime);
         assert!(parsed.args.is_empty());
         assert!(parsed.flags.is_empty());
+    }
+
+    #[test]
+    fn parser_preserves_ping_flags_for_dispatch_validation() {
+        let parsed = parse("ping --count 2 example.com");
+        assert_eq!(parsed.command, Command::Ping);
+        assert_eq!(parsed.flags.as_slice(), ["--count"]);
+        assert_eq!(parsed.args.as_slice(), ["2", "example.com"]);
     }
 
     #[test]

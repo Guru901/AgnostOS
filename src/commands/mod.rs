@@ -16,6 +16,11 @@ mod help;
 mod parser;
 #[cfg_attr(
     feature = "profiling",
+    agnostos_profile_macro::profiled_module("src/commands/ping.rs")
+)]
+mod ping;
+#[cfg_attr(
+    feature = "profiling",
     agnostos_profile_macro::profiled_module("src/commands/shutdown.rs")
 )]
 mod shutdown;
@@ -31,7 +36,7 @@ use parser::{Command, parse};
 /// "Unknown command" if the command is not recognized.
 pub(crate) fn run_command(command: &str) {
     let parsed = parse(command);
-    let _ = parsed.flags;
+    let flags = parsed.flags;
     let args = parsed.args;
 
     match parsed.command {
@@ -53,6 +58,8 @@ pub(crate) fn run_command(command: &str) {
         Command::Clear => console::reset(),
         Command::Shutdown => shutdown::exit_qemu(shutdown::QemuExitCode::SUCCESS),
         Command::Uptime => kprintln!("{}", timer::uptime()),
+        Command::Ping if flags.is_empty() => ping::ping(&args),
+        Command::Ping => kprintln!("usage: ping <IPv4 address or hostname>"),
         Command::Empty => {}
         Command::Unknown => kprintln!("Unknown command"),
     }
