@@ -37,34 +37,55 @@ struct Driver {
 }
 
 impl Driver {
+    /// Return a controller register's absolute I/O port.
     fn port(&self, offset: u16) -> u16 {
         self.io_base + offset
     }
 
+    /// Read an 8-bit controller register.
+    ///
+    /// # Safety
+    /// `offset` must identify an RTL8139 register valid for byte reads.
     unsafe fn read8(&self, offset: u16) -> u8 {
         let mut port = Port::<u8>::new(self.port(offset));
         // SAFETY: caller must use a valid RTL8139 register offset.
         unsafe { port.read() }
     }
 
+    /// Read a 32-bit controller register.
+    ///
+    /// # Safety
+    /// `offset` must identify an RTL8139 register valid for dword reads.
     unsafe fn read32(&self, offset: u16) -> u32 {
         let mut port = Port::<u32>::new(self.port(offset));
         // SAFETY: caller must use a valid RTL8139 register offset.
         unsafe { port.read() }
     }
 
+    /// Write an 8-bit controller register.
+    ///
+    /// # Safety
+    /// `offset` and `value` must be valid for the controller's current state.
     unsafe fn write8(&self, offset: u16, value: u8) {
         let mut port = Port::<u8>::new(self.port(offset));
         // SAFETY: caller must use a valid RTL8139 register offset/value.
         unsafe { port.write(value) }
     }
 
+    /// Write a 16-bit controller register.
+    ///
+    /// # Safety
+    /// `offset` and `value` must be valid for the controller's current state.
     unsafe fn write16(&self, offset: u16, value: u16) {
         let mut port = Port::<u16>::new(self.port(offset));
         // SAFETY: caller must use a valid RTL8139 register offset/value.
         unsafe { port.write(value) }
     }
 
+    /// Write a 32-bit controller register.
+    ///
+    /// # Safety
+    /// `offset` and `value` must be valid for the controller's current state.
     unsafe fn write32(&self, offset: u16, value: u32) {
         let mut port = Port::<u32>::new(self.port(offset));
         // SAFETY: caller must use a valid RTL8139 register offset/value.

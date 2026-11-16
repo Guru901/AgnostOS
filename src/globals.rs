@@ -96,7 +96,3 @@ pub(crate) mod timer {
     pub(crate) const TIMER_FREQUENCY: u64 = 1_000;
     pub(crate) const PIT_DIVISOR: u64 = PIT_FREQUENCY / TIMER_FREQUENCY;
 }
-
-pub(crate) mod net {
-    pub(crate) const MAX_NET_INTERFACE: usize = 1;
-}

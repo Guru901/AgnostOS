@@ -12,6 +12,10 @@ pub(super) struct Rtl8139Pci {
     pub io_base: u16,
 }
 
+/// Read one 32-bit PCI configuration-space register.
+///
+/// # Safety
+/// Must run on x86 with exclusive access to the PCI configuration ports.
 unsafe fn read_config(bus: u8, device: u8, function: u8, offset: u8) -> u32 {
     let address = 0x8000_0000
         | (u32::from(bus) << 16)
@@ -28,6 +32,10 @@ unsafe fn read_config(bus: u8, device: u8, function: u8, offset: u8) -> u32 {
     }
 }
 
+/// Write one 32-bit PCI configuration-space register.
+///
+/// # Safety
+/// Must run on x86 with exclusive access to the PCI configuration ports.
 unsafe fn write_config(bus: u8, device: u8, function: u8, offset: u8, value: u32) {
     let address = 0x8000_0000
         | (u32::from(bus) << 16)

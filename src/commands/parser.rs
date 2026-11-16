@@ -99,6 +99,14 @@ mod tests {
     }
 
     #[test]
+    fn parser_preserves_ping_flags_for_dispatch_validation() {
+        let parsed = parse("ping --count 2 example.com");
+        assert_eq!(parsed.command, Command::Ping);
+        assert_eq!(parsed.flags.as_slice(), ["--count"]);
+        assert_eq!(parsed.args.as_slice(), ["2", "example.com"]);
+    }
+
+    #[test]
     fn parser_recognizes_taskinfo() {
         let parsed = parse("taskinfo");
         assert_eq!(parsed.command, Command::Taskinfo);

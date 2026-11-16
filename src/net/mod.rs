@@ -4,7 +4,11 @@
 //! The network path currently targets a polling RTL8139 device. QEMU user-mode
 //! networking uses a fixed local address and gateway configured below.
 
-use core::{convert::TryInto, net::Ipv4Addr};
+use core::{
+    convert::TryInto,
+    net::Ipv4Addr,
+    sync::atomic::{AtomicU16, Ordering},
+};
 use spin::Mutex;
 
 mod pci;
@@ -19,6 +23,12 @@ const MAX_FRAME_LEN: usize = 1536;
 const ECHO_DATA: &[u8] = b"agnostos ping";
 const DNS_PORT: u16 = 53000;
 const DNS_QUERY_ID: u16 = 0x4e53;
+static NEXT_IPV4_IDENTIFICATION: AtomicU16 = AtomicU16::new(1);
+
+/// Allocate the next IPv4 Identification value for an outgoing datagram.
+fn next_ipv4_identification() -> u16 {
+    NEXT_IPV4_IDENTIFICATION.fetch_add(1, Ordering::Relaxed)
+}
 
 #[derive(Clone, Copy)]
 struct NetworkConfig {
@@ -85,8 +95,16 @@ pub fn ping(destination: Ipv4Addr, sequence: u16, timeout_ms: u64) -> Result<u64
         .write(&mut icmp)
         .map_err(|_| NetworkError::DeviceFailure)?;
     let mut ipv4 = [0u8; IPV4_MIN_HEADER_LEN + ICMPV4_ECHO_HEADER_LEN + ECHO_DATA.len()];
-    let ipv4_len = Ipv4Packet::write(LOCAL_IPV4, destination, 64, 1, &icmp[..icmp_len], &mut ipv4)
-        .map_err(|_| NetworkError::DeviceFailure)?;
+    let ipv4_len = Ipv4Packet::write(
+        LOCAL_IPV4,
+        destination,
+        next_ipv4_identification(),
+        64,
+        1,
+        &icmp[..icmp_len],
+        &mut ipv4,
+    )
+    .map_err(|_| NetworkError::DeviceFailure)?;
     transmit_frame(
         config.mac,
         destination_mac,
@@ -125,8 +143,16 @@ pub fn resolve_hostname(hostname: &str) -> Result<Ipv4Addr, NetworkError> {
     let udp_len = UdpDatagram::write(DNS_PORT, 53, &dns[..dns_len], &mut udp)
         .map_err(|_| NetworkError::DnsFailure)?;
     let mut ipv4 = [0u8; IPV4_MIN_HEADER_LEN + 520];
-    let ipv4_len = Ipv4Packet::write(LOCAL_IPV4, DNS_IPV4, 64, 17, &udp[..udp_len], &mut ipv4)
-        .map_err(|_| NetworkError::DnsFailure)?;
+    let ipv4_len = Ipv4Packet::write(
+        LOCAL_IPV4,
+        DNS_IPV4,
+        next_ipv4_identification(),
+        64,
+        17,
+        &udp[..udp_len],
+        &mut ipv4,
+    )
+    .map_err(|_| NetworkError::DnsFailure)?;
     transmit_frame(
         config.mac,
         destination_mac,
@@ -145,6 +171,7 @@ pub fn resolve_hostname(hostname: &str) -> Result<Ipv4Addr, NetworkError> {
     Err(NetworkError::DnsFailure)
 }
 
+/// Encode one DNS A-record question into a caller-provided packet buffer.
 fn build_dns_query(
     hostname: &str,
     transaction_id: u16,
@@ -174,6 +201,7 @@ fn build_dns_query(
     Ok(cursor + 4)
 }
 
+/// Extract the first IPv4 answer from a DNS response matching `transaction_id`.
 fn parse_dns_a_response(bytes: &[u8], transaction_id: u16) -> Option<[u8; 4]> {
     if bytes.len() < 12
         || u16::from_be_bytes([bytes[0], bytes[1]]) != transaction_id
@@ -212,6 +240,7 @@ fn parse_dns_a_response(bytes: &[u8], transaction_id: u16) -> Option<[u8; 4]> {
     None
 }
 
+/// Advance over a DNS name, including compressed pointer encodings.
 fn skip_dns_name(bytes: &[u8], mut cursor: usize) -> Option<usize> {
     loop {
         let length = usize::from(*bytes.get(cursor)?);
@@ -235,10 +264,12 @@ fn skip_dns_name(bytes: &[u8], mut cursor: usize) -> Option<usize> {
     }
 }
 
+/// Return whether two IPv4 addresses fall under the configured subnet mask.
 fn same_subnet(left: [u8; 4], right: [u8; 4]) -> bool {
     (0..4).all(|i| left[i] & SUBNET_MASK[i] == right[i] & SUBNET_MASK[i])
 }
 
+/// Resolve a next-hop IPv4 address with ARP, reusing the most recent peer.
 fn resolve_address(address: [u8; 4], config: NetworkConfig) -> Result<MacAddress, NetworkError> {
     {
         let state = NETWORK.lock();
@@ -277,6 +308,7 @@ fn resolve_address(address: [u8; 4], config: NetworkConfig) -> Result<MacAddress
     Err(NetworkError::AddressResolutionTimeout)
 }
 
+/// Serialize and transmit one Ethernet frame, padding it to the minimum size.
 fn transmit_frame(
     source: MacAddress,
     destination: MacAddress,
@@ -297,6 +329,7 @@ fn transmit_frame(
     rtl8139::transmit(&frame[..length]).map_err(|_| NetworkError::DeviceFailure)
 }
 
+/// Poll one frame and dispatch supported ARP, ICMP, or DNS traffic.
 fn receive_and_process(
     config: NetworkConfig,
     frame_buffer: &mut [u8; MAX_FRAME_LEN],
@@ -617,11 +650,13 @@ impl<'a> Ipv4Packet<'a> {
         })
     }
 
-    /// Write an IPv4 header and payload, computing its header checksum.
-    /// Fragmentation fields are zeroed because fragmentation is not supported.
+    /// Write an IPv4 header and payload, preserving `identification` and
+    /// computing the header checksum. Fragmentation fields are zeroed because
+    /// fragmentation is not supported.
     pub fn write(
         source: [u8; 4],
         destination: [u8; 4],
+        identification: u16,
         ttl: u8,
         protocol: u8,
         payload: &[u8],
@@ -637,6 +672,7 @@ impl<'a> Ipv4Packet<'a> {
         out[..IPV4_MIN_HEADER_LEN].fill(0);
         out[0] = 0x45;
         out[2..4].copy_from_slice(&(total_len as u16).to_be_bytes());
+        out[4..6].copy_from_slice(&identification.to_be_bytes());
         out[8] = ttl;
         out[9] = protocol;
         out[12..16].copy_from_slice(&source);
@@ -652,11 +688,12 @@ impl<'a> Ipv4Packet<'a> {
 #[must_use]
 pub fn internet_checksum(bytes: &[u8]) -> u16 {
     let mut sum = 0u32;
-    let mut chunks = bytes.chunks_exact(2);
-    for pair in &mut chunks {
-        sum += u32::from(u16::from_be_bytes([pair[0], pair[1]]));
+    let (pairs, remainder) = bytes.as_chunks::<2>();
+    for pair in pairs {
+        sum += u32::from(u16::from_be_bytes(*pair));
+        sum = (sum & 0xffff) + (sum >> 16);
     }
-    if let Some(&last) = chunks.remainder().first() {
+    if let Some(&last) = remainder.first() {
         sum += u32::from(last) << 8;
     }
     while sum >> 16 != 0 {
@@ -782,4 +819,54 @@ pub enum PacketError {
     InvalidChecksum,
     /// The output buffer cannot contain the serialized packet.
     BufferTooSmall,
+}
+
+#[cfg(test)]
+mod packet_tests {
+    use super::{IPV4_MIN_HEADER_LEN, Ipv4Packet, internet_checksum};
+
+    #[test]
+    fn ipv4_writer_preserves_identification() {
+        let payload = [0xaa, 0x55];
+        let mut packet = [0u8; IPV4_MIN_HEADER_LEN + 2];
+        Ipv4Packet::write(
+            [192, 0, 2, 1],
+            [198, 51, 100, 2],
+            0x9abc,
+            64,
+            1,
+            &payload,
+            &mut packet,
+        )
+        .unwrap();
+
+        assert_eq!(&packet[4..6], &0x9abcu16.to_be_bytes());
+        assert_eq!(Ipv4Packet::parse(&packet).unwrap().payload, payload);
+    }
+
+    #[test]
+    fn checksum_matches_reference_for_long_and_odd_inputs() {
+        let long = alloc::vec![0xff; 200_001];
+        assert_eq!(internet_checksum(&long), reference_checksum(&long));
+        assert_eq!(
+            internet_checksum(&[0x12, 0x34, 0x56]),
+            reference_checksum(&[0x12, 0x34, 0x56])
+        );
+    }
+
+    /// Compute the same checksum with a wide accumulator for regression checks.
+    fn reference_checksum(bytes: &[u8]) -> u16 {
+        let mut sum = 0u64;
+        let mut pairs = bytes.chunks_exact(2);
+        for pair in &mut pairs {
+            sum += u64::from(u16::from_be_bytes([pair[0], pair[1]]));
+        }
+        if let Some(&last) = pairs.remainder().first() {
+            sum += u64::from(last) << 8;
+        }
+        while sum >> 16 != 0 {
+            sum = (sum & 0xffff) + (sum >> 16);
+        }
+        !(sum as u16)
+    }
 }
