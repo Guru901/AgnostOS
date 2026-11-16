@@ -21,6 +21,8 @@ const SUBNET_MASK: [u8; 4] = [255, 255, 255, 0];
 const PING_ID: u16 = 0x4147;
 const MAX_FRAME_LEN: usize = 1536;
 const ECHO_DATA: &[u8] = b"agnostos ping";
+/// Number of data bytes carried by each ICMP echo probe.
+pub const PING_DATA_LEN: usize = ECHO_DATA.len();
 const DNS_PORT: u16 = 53000;
 const DNS_QUERY_ID: u16 = 0x4e53;
 static NEXT_IPV4_IDENTIFICATION: AtomicU16 = AtomicU16::new(1);

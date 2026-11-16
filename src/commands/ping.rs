@@ -31,11 +31,17 @@ pub(crate) fn ping(args: &[&str]) {
             }
         },
     };
-    kprintln!("PING {} ({}): {} data bytes", destination, address, 13);
+    kprintln!(
+        "PING {} ({}): {} data bytes",
+        destination,
+        address,
+        crate::net::PING_DATA_LEN
+    );
     for sequence in 1..=4 {
         match crate::net::ping(address, sequence, 1_000) {
             Ok(elapsed_ms) => kprintln!(
-                "21 bytes from {}: icmp_seq={} time={} ms",
+                "{} bytes from {}: icmp_seq={} time={} ms",
+                crate::net::ICMPV4_ECHO_HEADER_LEN + crate::net::PING_DATA_LEN,
                 address,
                 sequence,
                 elapsed_ms
