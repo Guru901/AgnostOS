@@ -58,7 +58,13 @@ pub(crate) fn run_command(command: &str) {
         Command::Clear => console::reset(),
         Command::Shutdown => shutdown::exit_qemu(shutdown::QemuExitCode::SUCCESS),
         Command::Uptime => kprintln!("{}", timer::uptime()),
-        Command::Ping => ping::ping(&args),
+        Command::Ping => {
+            if parsed.flags.is_empty() {
+                ping::ping(&args);
+            } else {
+                kprintln!("usage: ping <IPv4 address or hostname>");
+            }
+        }
         Command::Empty => {}
         Command::Unknown => kprintln!("Unknown command"),
     }
