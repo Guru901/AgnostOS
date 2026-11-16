@@ -2,7 +2,7 @@
 
 use core::{
     ptr,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::{AtomicBool, Ordering, compiler_fence},
 };
 use spin::Mutex;
 use x86_64::instructions::port::Port;
@@ -136,8 +136,8 @@ pub(super) fn initialize() -> Result<MacAddress, DriverError> {
             return Err(DriverError::DmaAddressTooHigh);
         }
         driver.write32(0x30, rx_address as u32);
-        for index in 0..4 {
-            let address = ptr::addr_of_mut!(TX_BUFFERS[index].0) as u64;
+        for (index, buffer) in (*ptr::addr_of_mut!(TX_BUFFERS)).iter_mut().enumerate() {
+            let address = ptr::addr_of_mut!(buffer.0) as u64;
             if address > u64::from(u32::MAX) {
                 return Err(DriverError::DmaAddressTooHigh);
             }
@@ -145,7 +145,7 @@ pub(super) fn initialize() -> Result<MacAddress, DriverError> {
         }
         driver.write16(0x3c, 0); // disable device IRQs; the driver polls
         driver.write16(0x3e, 0xffff); // clear pending status
-        driver.write32(0x44, 0x0000_008f); // 8 KiB ring, accept unicast/broadcast
+        driver.write32(0x44, 0x0000_000f); // 8 KiB ring, wrap at boundary (WRAP=0)
         driver.write8(0x37, 0x0c); // enable receiver and transmitter
     }
 
@@ -181,6 +181,9 @@ pub(super) fn transmit(frame: &[u8]) -> Result<(), DriverError> {
             ptr::addr_of_mut!(TX_BUFFERS[slot].0).cast(),
             frame.len(),
         );
+        // x86 PCI DMA is cache coherent and store ordered. Prevent compiler
+        // movement of frame writes past the ownership transfer to the NIC.
+        compiler_fence(Ordering::Release);
         driver.write32(0x10 + slot as u16 * 4, frame.len() as u32);
         let mut timeout = 10_000_000usize;
         loop {
@@ -211,10 +214,12 @@ pub(super) fn receive(out: &mut [u8]) -> Result<Option<usize>, DriverError> {
         if driver.read8(0x37) & 1 != 0 {
             return Ok(None);
         }
+        // Order DMA reads after the completion check on this coherent x86 NIC.
+        compiler_fence(Ordering::Acquire);
         let ring = ptr::addr_of!(RX_BUFFER.0).cast::<u8>();
         let offset = driver.rx_offset;
-        let status = u16::from_le(ptr::read_unaligned(ring.add(offset).cast::<u16>()));
-        let length = usize::from(u16::from_le(ptr::read_unaligned(
+        let status = u16::from_le(ptr::read_volatile(ring.add(offset).cast::<u16>()));
+        let length = usize::from(u16::from_le(ptr::read_volatile(
             ring.add(offset + 2).cast::<u16>(),
         )));
         if status & RX_ERROR != 0
@@ -229,10 +234,12 @@ pub(super) fn receive(out: &mut [u8]) -> Result<Option<usize>, DriverError> {
         }
         let data_start = (offset + 4) % RX_RING_LEN;
         for (index, byte) in out[..frame_len].iter_mut().enumerate() {
-            *byte = ptr::read(ring.add((data_start + index) % RX_RING_LEN));
+            *byte = ptr::read_volatile(ring.add((data_start + index) % RX_RING_LEN));
         }
         driver.rx_offset = (offset + 4 + length + 3) & !3;
         driver.rx_offset %= RX_RING_LEN;
+        // Finish consuming the frame before returning ring space to the NIC.
+        compiler_fence(Ordering::Release);
         driver.write16(0x38, driver.rx_offset.wrapping_sub(16) as u16);
         Ok(Some(frame_len))
     }
